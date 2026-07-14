@@ -99,6 +99,11 @@ public:
 	static uint16 PackFloatRad(float f) { return f * (16384.0f / M_PI); } // 5215.189f
 	static float UnpackFloatDeg(uint16 v) { return v * (180.0f / 16384.0f); } // 0.010986328f
 
+	inline static uint16 PackFloatDeg(float f) { return f * (16384.0f / 180.0f); }
+	inline static float UnpackFloatRad(uint16 v) { return v * (M_PI / 16384.0f); }
+	inline static uint16 PackFloat(float f, float maxValue) { return f * (16384.0f / maxValue); }
+	inline static float UnpackFloat(uint16 v, float maxValue) { return v * (maxValue / 16384.0f); }
+
 	void OnPreRender(sPed* pPed);
 #if !defined(FINAL) && !defined(MASTER)
 	void Dump();
@@ -137,20 +142,24 @@ struct sPedSync : sElementPhysicalSync {
 public:
 	int16 m_nVehicleID;
 	uint16 m_nHealth;
-	PedState m_nPedState;
-	eObjective m_nObjective;
-	ePedType m_nPedType;
-	eWeaponType m_eCurWeaponType;
+	uint8 m_nPedState; // PedState
+	uint8 m_nObjective; // eObjective
+	uint8 m_nPedType; // ePedType
+	uint8 m_eCurWeaponType; // eWeaponType
 	float m_fRotationCur;
 	float m_fRotationDest;
 	sPedIKSync m_CompressedPedIK;
 	uint8 m_nAnimCount;
-	// i8
+	//uint8 field_D7; // pad
 	sPedAnimSync m_aPedAnims[NUM_MULTIPLAYER_SYNC_ANIMS];
 	bool m_bBodyPartJustCameOff;
 	bool m_bIsPedDieAnimPlaying;
 	int16 m_nPlayerTeam;
 	uint8 m_bPhys_lvcs_unk_1; // bool?
+	int8 m_nPeerLockOnMG;
+	int16 m_nSurfaceTouched; // eSurfaceType
+	uint8 m_nMoveState; // eMoveState
+	uint8 m_eCurWeaponState; // eWeaponState
 
 	// LVCS Flags B  wtf? This is stupid, sElementPhysicalSync already has it!
 	union
@@ -158,7 +167,7 @@ public:
 		struct
 		{
 			uint8 b154_1 : 1;
-			uint8 bHasBlip : 1;
+			uint8 bHasBlipPhys : 1;
 			uint8 b154_4 : 1;
 			uint8 bNoRadarForEnemy : 1;
 			uint8 b154_10 : 1;
@@ -169,10 +178,7 @@ public:
 		uint8 m_nPedPhys_lvcs_unk_flagsB; // added prefix Ped
 	};
 
-	int8 m_nPeerLockOnMG;
-	int16 m_nSurfaceTouched; // eSurfaceType
-	eMoveState m_nMoveState;
-	eWeaponState m_eCurWeaponState;
+	//uint8 field_15B[5]; // pad?
 
 	sPedSync();
 	sPedSync(CPed* pPed);
@@ -183,6 +189,10 @@ public:
 	void CopyAnimations(RpClump* clump);
 #if !defined(FINAL) && !defined(MASTER)
 	void Dump();
+#endif
+
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
+	eElementType GetType() override { return eElementType::ELEMENT_TYPE_PED; }
 #endif
 
 	inline int16 GetVehicleID() { return m_nVehicleID; }
@@ -227,7 +237,7 @@ static_assert(sizeof(tPedSyncsDeltas) == 14, "sizeof(tPedSyncsDeltas)");
 #pragma pack(pop)
 
 class cPedMG : public cPhysicalMG {
-private:
+public:
 	eWeaponType m_storedWeapon;
 	RpAtomic* m_pWeaponModel;
 	CFire* m_pFire;
@@ -238,7 +248,9 @@ private:
 #ifndef GTA_LIBERTY
 	CRGBA m_aColors[NUM_PED_COLOURS]; // 0x1A8
 #endif
-public:
+#ifdef DEBUG_MULTIGAME
+	const char* szDebugMessages[10];
+#endif
 
 	cPedMG(sElement* elem);
 
@@ -250,12 +262,17 @@ public:
 	bool SetupLighting(void) override;
 	void RemoveLighting(bool reset) override;
 
-	void AddWeaponModel(int model);
-	void RemoveWeaponModel(int model);
+	void AddWeaponModel(int32 model);
+	void RemoveWeaponModel(int32 model);
 	bool IsLocalPlayerPed();
 
 	inline void Respawn() { if (m_pFire) m_pFire->Extinguish(); }
+#ifdef DEBUG_MULTIGAME
+	inline const char** GetDebugMessages() { return szDebugMessages; }
+#endif
 };
+
+PedState GetPedState(CPhysical* pPed);
 
 struct sPed : sElementPhysical {
 public:

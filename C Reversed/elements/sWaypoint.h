@@ -9,8 +9,8 @@
 
 enum eWaypointType
 {
-	WAYPOINT_TYPE_0 = 0,
-	WAYPOINT_TYPE_1,
+	WAYPOINT_LAND = 0,
+	WAYPOINT_AIR,
 };
 
 struct sWaypoint;
@@ -42,7 +42,7 @@ public:
 struct sWaypoint {
 public:
 	uint16 m_nCount;
-	std::map<uint16, std::pair<int, bool>> m_RbWaypointTree; // id -> (owner, hit)
+	std::map<uint16, std::pair<int32, bool>> m_RbWaypointTree; // id -> (owner, hit)
 	//int8 m_pad1[2];
 	std::vector<sWaypointElement*> m_WaypointElements;
 	bool m_bRaceArrowVisible;

@@ -25,11 +25,15 @@
 #include "TimeCycle.h"
 #include "Pad.h"
 #include "Pools.h"
+#include "AudioManager.h"
 
 #include "multiplayer/elements/sPed.h"
 #include "multiplayer/elements/sVehicle.h"
 #include "multiplayer/elements/sAutomobile.h"
 #include "multiplayer/elements/sBike.h"
+#ifndef GTA_LIBERTY
+#include "multiplayer/elements/sBmx.h"
+#endif
 #include "multiplayer/elements/sSyncStream.h"
 #include "multiplayer/MultiGame.h"
 
@@ -175,6 +179,10 @@ void sPedIKSync::ReadSyncFromStream(sReadSyncStream* pSyncStream, sPedIKSync* pO
 		pOutSync->m_nHandRoll = pSyncStream->ReadU16();
 }
 
+// TODO: merge CPedIK::PointGunInDirection PointGunInDirectionUsingArm, m_pedIK.PointGunInDirection(m_fLookDirection, ((CPlayerPed*)this)->m_fFPSMoveHeading);
+// its rotate RtQuat directly for native hidden ped
+// todo? check pedstate? aiming? calc from camera direction yaw and pitch and rotate RtQuat for aiming
+// see cPedMG::PreRender
 void sPedIKSync::OnPreRender(sPed* pPed)
 {
 	static const RwV3d Xaxis = { 1.0f, 0.0f, 0.0f };
@@ -238,6 +246,50 @@ void sPedIKSync::OnPreRender(sPed* pPed)
 		RtQuatRotate(torsoQuat, &Xaxis, sPedIKSync::UnpackFloatDeg(m_torsoOrient.pitch), rwCOMBINEREPLACE);
 		RtQuatRotate(torsoQuat, &Zaxis, sPedIKSync::UnpackFloatDeg(m_torsoOrient.yaw), rwCOMBINEPRECONCAT);
 	}
+
+	// remove it
+	// check CPedIK::PointGunInDirection CPedIK::PointGunInDirectionUsingArm new ik flags, probably sync arm
+#ifdef FIX_BUGS // copy rotation from native PointGunInDirection PointGunInDirectionUsingArm
+	// todo its bug arm leg to up
+	//CPed* pNativePed = (CPed*)pPed->GetEntity();
+	//if (!pNativePed || npc)
+	//	return;
+
+	// todo return if not player (npc)
+
+	//for (int32 i = 0; i < PED_NODE_MAX; i++)
+	//{
+	//	AnimBlendFrameData* pFrame = pNativePed->m_pFrames[i];
+
+	//	if (pFrame)
+	//	{
+	//		RpHAnimStdInterpFrame* a = pFrame->hanimFrame;
+	//		if (a)
+	//			pPed->m_pFrames[i]->hanimFrame->q = a->q;
+	//	}
+	//}
+
+
+	// some test
+	//// fine get from sync cam/yawpitch
+	//// rotate
+	//// IsMultiplayerPlayer()
+	//if (GetElement().ped->GetID() == eElementID::MG_ELEMENT_PLAYER_PED_ID &&
+	//	GetElement().ped->GetOwner() == TheMPGame.LocalPlayerID() &&
+	//	GetElement().ped->GetEntity())
+	//{
+	//	//CPlayerPed* player = FindPlayerPed();
+	//	CPlayerPed* player = (CPlayerPed*)GetElement().ped->GetEntity();
+	//	assert(player && player->IsPlayer());
+
+	//	// CPed::AimGun()
+	//	//m_pedIK.PointGunInDirection(player->m_fLookDirection, player->m_fFPSMoveHeading);
+	//	//sPlayer* pPlayer = (sPlayer*)cMultiGame::Instance().GetEntityForHandle(GetElement().element->GetOwner(), eElementID::MG_ELEMENT_PLAYER_ID);
+	//	//if (pPlayer) {
+	//	//	CVector& vecFront = pPlayer->GetSync().player->m_vCamFront;
+	//	//}
+	//}
+#endif
 }
 
 #if !defined(FINAL) && !defined(MASTER)
@@ -252,29 +304,30 @@ void sPedIKSync::Dump()
 	float lowerArmYaw = UnpackFloatDeg(m_lowerArmOrient.yaw);
 	float lowerArmPitch = UnpackFloatDeg(m_lowerArmOrient.pitch);
 
-	debug("=== sPedIKSync Dump ===\n");
-	debug("Flags:           0x%02X\n", m_flags);
-	debug("Head Orientation:\n");
-	debug("  Yaw:   %u (%.2f) (0x%04X)\n", m_headOrient.yaw, headYaw, m_headOrient.yaw);
-	debug("  Pitch: %u (%.2f) (0x%04X)\n", m_headOrient.pitch, headPitch, m_headOrient.pitch);
-	debug("Torso Orientation:\n");
-	debug("  Yaw:   %u (%.2f) (0x%04X)\n", m_torsoOrient.yaw, torsoYaw, m_torsoOrient.yaw);
-	debug("  Pitch: %u (%.2f) (0x%04X)\n", m_torsoOrient.pitch, torsoPitch, m_torsoOrient.pitch);
-	debug("Upper Arm Orientation:\n");
-	debug("  Yaw:   %u (%.2f) (0x%04X)\n", m_upperArmOrient.yaw, upperArmYaw, m_upperArmOrient.yaw);
-	debug("  Pitch: %u (%.2f) (0x%04X)\n", m_upperArmOrient.pitch, upperArmPitch, m_upperArmOrient.pitch);
-	debug("Lower Arm Orientation:\n");
-	debug("  Yaw:   %u (%.2f) (0x%04X)\n", m_lowerArmOrient.yaw, lowerArmYaw, m_lowerArmOrient.yaw);
-	debug("  Pitch: %u (%.2f) (0x%04X)\n", m_lowerArmOrient.pitch, lowerArmPitch, m_lowerArmOrient.pitch);
-	debug("Upper Arm Roll:  %u (0x%04X)\n", m_nUaRoll, m_nUaRoll);
-	debug("Hand Roll:       %u (0x%04X)\n", m_nHandRoll, m_nHandRoll);
-	debug("================================\n");
+	printf("=== sPedIKSync Dump ===\n");
+	printf("Flags:           0x%02X\n", m_flags);
+	printf("Head Orientation:\n");
+	printf("  Yaw:   %u (%.2f) (0x%04X)\n", m_headOrient.yaw, headYaw, m_headOrient.yaw);
+	printf("  Pitch: %u (%.2f) (0x%04X)\n", m_headOrient.pitch, headPitch, m_headOrient.pitch);
+	printf("Torso Orientation:\n");
+	printf("  Yaw:   %u (%.2f) (0x%04X)\n", m_torsoOrient.yaw, torsoYaw, m_torsoOrient.yaw);
+	printf("  Pitch: %u (%.2f) (0x%04X)\n", m_torsoOrient.pitch, torsoPitch, m_torsoOrient.pitch);
+	printf("Upper Arm Orientation:\n");
+	printf("  Yaw:   %u (%.2f) (0x%04X)\n", m_upperArmOrient.yaw, upperArmYaw, m_upperArmOrient.yaw);
+	printf("  Pitch: %u (%.2f) (0x%04X)\n", m_upperArmOrient.pitch, upperArmPitch, m_upperArmOrient.pitch);
+	printf("Lower Arm Orientation:\n");
+	printf("  Yaw:   %u (%.2f) (0x%04X)\n", m_lowerArmOrient.yaw, lowerArmYaw, m_lowerArmOrient.yaw);
+	printf("  Pitch: %u (%.2f) (0x%04X)\n", m_lowerArmOrient.pitch, lowerArmPitch, m_lowerArmOrient.pitch);
+	printf("Upper Arm Roll:  %u (0x%04X)\n", m_nUaRoll, m_nUaRoll);
+	printf("Hand Roll:       %u (0x%04X)\n", m_nHandRoll, m_nHandRoll);
+	printf("================================\n");
 }
 #endif
 
 
-sPedSync::sPedSync() : sElementPhysicalSync()
+sPedSync::sPedSync() : sElementPhysicalSync(), m_CompressedPedIK()
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 	m_nVehicleID = -1;
 	m_fRotationCur = 0.0f;
 	m_fRotationDest = 0.0f;
@@ -290,8 +343,9 @@ sPedSync::sPedSync() : sElementPhysicalSync()
 	m_nPedPhys_lvcs_unk_flagsB = 0;
 }
 
-sPedSync::sPedSync(CPed* ped) : sElementPhysicalSync(ped)
+sPedSync::sPedSync(CPed* ped) : sElementPhysicalSync(ped), m_CompressedPedIK(&ped->m_pedIK)
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 	m_nHealth = ped->m_fHealth;
 	m_nPedState = ped->m_nPedState;
 	m_nObjective = ped->m_objective;
@@ -299,7 +353,7 @@ sPedSync::sPedSync(CPed* ped) : sElementPhysicalSync(ped)
 	m_eCurWeaponType = ped->GetWeapon()->m_eWeaponType;
 	m_fRotationCur = ped->m_fRotationCur;
 	m_fRotationDest = ped->m_fRotationDest;
-	m_CompressedPedIK = sPedIKSync(&ped->m_pedIK);
+	//m_CompressedPedIK = sPedIKSync(&ped->m_pedIK);
 	m_bBodyPartJustCameOff = ped->bBodyPartJustCameOff;
 	m_bIsPedDieAnimPlaying = ped->bIsPedDieAnimPlaying;
 	m_nPlayerTeam = ped->m_nTeamIdMG;
@@ -333,8 +387,9 @@ sPedSync::sPedSync(CPed* ped) : sElementPhysicalSync(ped)
 #endif
 }
 
-sPedSync::sPedSync(const sPedSync& other) : sElementPhysicalSync(other)
+sPedSync::sPedSync(const sPedSync& other) : sElementPhysicalSync(other), m_CompressedPedIK()
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 	m_nVehicleID = other.m_nVehicleID;
 	m_nHealth = other.m_nHealth;
 	m_nPedState = other.m_nPedState;
@@ -379,7 +434,9 @@ sPedSync::sPedSync(const sPedSync& other) : sElementPhysicalSync(other)
 	m_nPedPhys_lvcs_unk_flagsB = other.m_nPedPhys_lvcs_unk_flagsB;
 }
 
-sPedSync::~sPedSync() { }
+sPedSync::~sPedSync() {
+	DECLARE_SYNC_DESTRUCT(this);
+}
 
 // not checks: m_CompressedPedIK, m_bBodyPartJustCameOff, m_bIsPedDieAnimPlaying, m_nPlayerTeam, m_nPeerLockOnMG
 bool sPedSync::Compare(const sPedSync& other)
@@ -517,9 +574,9 @@ void sPedSync::CopyAnimations(RpClump* clump)
 #if !defined(FINAL) && !defined(MASTER)
 void sPedSync::Dump()
 {
-	printf("=== sPedSync Dump ===\n");
 	sElementPhysicalSync::Dump();
 
+	printf("=== sPedSync Dump ===\n");
 	printf("\nPed Information:\n");
 	printf("  Vehicle ID:        %d %s\n", m_nVehicleID, InVehicle() ? "[IN VEHICLE]" : "[ON FOOT]");
 	printf("  Health:            %d\n", m_nHealth);
@@ -549,7 +606,7 @@ void sPedSync::Dump()
 
 	printf("  Ped LVCS Flags B:  0x%02X\n", m_nPedPhys_lvcs_unk_flagsB);
 	printf("    b154_1:          %d\n", b154_1);
-	printf("    bHasBlip:        %d\n", bHasBlip);
+	printf("    bHasBlipPhys:        %d\n", bHasBlipPhys);
 	printf("    b154_4:          %d\n", b154_4);
 	printf("    bNoRadarForEnemy:%d\n", bNoRadarForEnemy);
 	printf("    b154_10:         %d\n", b154_10);
@@ -597,6 +654,10 @@ cPedMG::cPedMG(sElement* elem) : cPhysicalMG(elem)
 	m_audioEntityId = DMAudio.CreateEntity(eAudioType::AUDIOTYPE_PHYSICAL, this);
 	field_1A4 = 0.0f;
 	m_nTime = cMultiGame::Instance().m_pNetSession->m_nCurTime;
+#ifdef DEBUG_MULTIGAME
+	for (uint32 i = 0; i < ARRAY_SIZE(szDebugMessages); i++)
+		szDebugMessages[i] = nil;
+#endif
 }
 
 cPedMG::~cPedMG()
@@ -634,6 +695,8 @@ void cPedMG::SetModelIndex(uint32 id)
 	//UpdateRpHAnim(); // in CPed::SetModelIndex but not in cPedMG::SetModelIndex
 }
 
+// TODO: merge CPedIK::PointGunInDirection PointGunInDirectionUsingArm, m_pedIK.PointGunInDirection(m_fLookDirection, ((CPlayerPed*)this)->m_fFPSMoveHeading);
+// its rotate RtQuat directly for native hidden ped
 void cPedMG::PreRender(void)
 {
 	uint16 syncTime = GetElement().ped->m_nTime - static_cast<uint16>(TheMPGame.m_nLagValue);
@@ -648,9 +711,7 @@ void cPedMG::PreRender(void)
 
 	if (sync->m_bBodyPartJustCameOff)
 	{
-		assert(RwObjectGetType(m_rwObject) == rpCLUMP);
-		RpClump* pClump = (RpClump*)m_rwObject;
-		RpHAnimHierarchy* hier = GetAnimHierarchyFromSkinClump(pClump);
+		RpHAnimHierarchy* hier = GetAnimHierarchyFromSkinClump(GetClump());
 		int32 idx = RpHAnimIDGetIndex(hier, GetElement().ped->m_pFrames[PED_HEAD]->nodeID);
 		RwMatrix* matArray = RpHAnimHierarchyGetMatrixArray(hier);
 		RwV3d scale = { 0.0f, 0.0f, 0.0f };
@@ -659,9 +720,7 @@ void cPedMG::PreRender(void)
 
 	if (sync->m_bBodyPartJustCameOff && sync->m_bIsPedDieAnimPlaying && ((CTimer::GetFrameCounter() & 7) >= 4))
 	{
-		assert(RwObjectGetType(m_rwObject) == rpCLUMP);
-		RpClump* pClump = (RpClump*)m_rwObject;
-		RpHAnimHierarchy* hier = GetAnimHierarchyFromSkinClump(pClump);
+		RpHAnimHierarchy* hier = GetAnimHierarchyFromSkinClump(GetClump());
 		int32 idx = RpHAnimIDGetIndex(hier, GetElement().ped->m_pFrames[PED_HEAD]->nodeID);
 		RwV3d localPos = { 0.0f, 0.0f, 0.0f };
 		RwV3d dir = { 0.0f, 0.0f, 0.0f };
@@ -674,7 +733,7 @@ void cPedMG::PreRender(void)
 			CParticle::AddParticle(PARTICLE_BLOOD_SPURT, localPos, dir, nil, 0.0f, 0, 0, 0, 0);
 	}
 
-#ifdef FIX_BUGS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 	if (bIsVisible && !(sync->InVehicle() && sync->m_nPedState != PED_DRAG_FROM_CAR && sync->m_nPedState != PED_EXIT_CAR))
 	{
 		if (CTimeCycle::GetShadowStrength() != 0)
@@ -704,19 +763,19 @@ void cPedMG::PreRender(void)
 
 void cPedMG::Render(void)
 {
+	cMultiGame& Game = cMultiGame::Instance();
 	if (GetElement().element->GetID() != eElementID::MG_ELEMENT_PLAYER_PED_ID || !FindPlayerPed() || !FindPlayerPed()->m_pMyVehicle ||
 		FindPlayerPed()->m_pMyVehicle->GetVehicleAppearance() != VEHICLE_APPEARANCE_HELI ||
 		TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_1STPERSON || TheCamera.Cams[TheCamera.ActiveCam].DirectionWasLooking)
 	{
 		if (GetElement().ped->GetID() == eElementID::MG_ELEMENT_PLAYER_PED_ID)
 		{
-			cMultiGame& pGame = cMultiGame::Instance();
-			sPlayer* pPlayer = pGame.GetPlayer(GetElement().ped->GetOwner());
+			sPlayer* pPlayer = Game.GetPlayer(GetElement().ped->GetOwner());
 			if (pPlayer)
 				pPlayer->OnPlayerRender();
 		}
 
-		uint16 nTime = GetElement().ped->m_nTime - static_cast<uint16>(TheMPGame.m_nLagValue);
+		uint16 nTime = GetElement().ped->m_nTime - static_cast<uint16>(Game.m_nLagValue);
 
 		CPed* pPed = (CPed*)GetElement().ped->GetEntity();
 
@@ -728,7 +787,23 @@ void cPedMG::Render(void)
 			TheCamera.GetLookDirection() != LOOKING_FORWARD || Mode != CCam::MODE_1STPERSON) &&
 			(!pPed || !pPed->b4E_8))
 		{
+#ifdef DEBUG_MULTIGAME
+			eElementSyncType foundType = eElementSyncType::SYNC_TYPE_NONE;
+			sPedSync* sync = GetElement().ped->FindSync(nTime, nil, &foundType).ped;
+#else
 			sPedSync* sync = GetElement().ped->FindSync(nTime, nil).ped;
+#endif
+
+#ifdef DEBUG_MULTIGAME
+			char dbuff[80];
+			char dbuff2[80];
+			cInterestZone* zone = TheMPGame.GetElementOwnerZone(GetElement().element);
+			sprintf(dbuff, "time %d zoneId %d m_nBasis %d m_nCurTime %d S: %s",
+				nTime, zone ? zone->m_nID : 0, zone ? zone->m_nBasis : 0, zone ? zone->m_nCurTime : 0, GetSyncTypeName(foundType));
+			GetDebugMessages()[0+1] = dbuff;
+			sprintf(dbuff2, "%f %f %f ik 0x%X", GetPosition().x, GetPosition().y, GetPosition().z, sync->m_CompressedPedIK.m_flags);
+			GetDebugMessages()[1+1] = dbuff2;
+#endif
 
 			if (!sync->b154_20 && (!IsLocalPlayerPed() || !TheCamera.Using1stPersonWeaponMode()))
 			{
@@ -739,7 +814,7 @@ void cPedMG::Render(void)
 
 				cPhysicalMG::Render();
 
-				eWeaponType eCurrent = sync->m_eCurWeaponType;
+				eWeaponType eCurrent = (eWeaponType)sync->m_eCurWeaponType;
 				eWeaponType eStored = m_storedWeapon;
 				if (eStored != eCurrent)
 				{
@@ -835,7 +910,7 @@ void cPedMG::RemoveLighting(bool reset)
 }
 
 
-void cPedMG::AddWeaponModel(int model) {
+void cPedMG::AddWeaponModel(int32 model) {
 	if (model == -1)
 		return;
 
@@ -846,7 +921,7 @@ void cPedMG::AddWeaponModel(int model) {
 	mi->AddRef();
 }
 
-void cPedMG::RemoveWeaponModel(int model) {
+void cPedMG::RemoveWeaponModel(int32 model) {
 	if (!m_pWeaponModel)
 		return;
 
@@ -869,9 +944,17 @@ bool cPedMG::IsLocalPlayerPed() {
 	return GetElement().element->GetOwner() == pGame.LocalPlayerID() && GetElement().ped->GetID() == eElementID::MG_ELEMENT_PLAYER_PED_ID;
 }
 
+PedState GetPedState(CPhysical* pPed) {
+	if (pPed->IsPed())
+		return ((CPed*)pPed)->GetPedState();
+	assert(pPed->IsMultiplayer() && pPed->bIsPed && ((cPedMG*)pPed)->GetElement().ped != nil);
+	return (PedState)((cPedMG*)pPed)->GetElement().ped->GetSync().ped->m_nPedState;
+}
 
 
-sPed::sPed() {
+
+sPed::sPed() : sElementPhysical() {
+	DECLARE_ELEMENT_CONSTRUCT(this, true, false);
 	m_nPedTime = 0;
 	m_bHasReload = false;
 	m_bHasShot = false;
@@ -885,9 +968,11 @@ sPed::sPed() {
 	GetPhysical()->m_fTurnMass = 100.0f;
 	GetPhysical()->m_fAirResistance = 0.4 / GetPhysical()->m_fMass;
 	ms_peds.push_back(this);
+	DECLARE_ELEMENT_CONSTRUCT(this, false, false);
 }
 
-sPed::sPed(CPed* ped) {
+sPed::sPed(CPed* ped) : sElementPhysical() {
+	DECLARE_ELEMENT_CONSTRUCT(this, true, true);
 	m_nPedTime = 0;
 	m_bHasReload = false;
 	m_bHasShot = false;
@@ -903,6 +988,7 @@ sPed::sPed(CPed* ped) {
 	RegisterSelf();
 	SetTeamID(ped->m_nTeamIdMG);
 	AttachSync(m_nTime, new sPedSync(ped));
+	DECLARE_ELEMENT_CONSTRUCT(this, false, true);
 }
 
 
@@ -923,8 +1009,12 @@ bool sPed::HasCapability(ElementCapability capability)
 }
 
 sPed::~sPed() {
+	DECLARE_ELEMENT_DESTRUCT(this);
 	--ms_nNumberOfSyncedPeds;
 	if (GetID() == eElementID::MG_ELEMENT_PLAYER_PED_ID) {
+#ifdef FIX_BUGS
+		debug("trying to delete player ped!!!!!\n");
+#else
 		debug("trying to delete player ped!!!!!\n");
 		debug("trying to delete player ped!!!!!\n");
 		debug("trying to delete player ped!!!!!\n");
@@ -935,6 +1025,7 @@ sPed::~sPed() {
 		debug("trying to delete player ped!!!!!\n");
 		debug("trying to delete player ped!!!!!\n");
 		debug("Trying to delete player ped");
+#endif
 	}
 
 	if (GetOwner() != cMultiGame::Instance().LocalPlayerID()) {
@@ -973,7 +1064,8 @@ sElementSync* sPed::CreateSync() {
 }
 
 void sPed::DisposeSync(sElementSync* pSync) {
-	delete (sPedSync*)pSync;
+	if(pSync)
+		delete ((sPedSync*)pSync);
 }
 
 sElementSync* sPed::CreateSyncFromOther(sElementSync* pSync)
@@ -998,12 +1090,12 @@ void sPed::ApplyClientSync(uint16 nTime) {
 	int32 shootAnimIndex = -1;
 
 	sPedSync* pSync = GetSync().ped;
-	uint32 animCount = pSync->m_nAnimCount;
+	uint8 animCount = pSync->m_nAnimCount;
 
 	for (uint32 i = 0; i < animCount; i++) {
 		sPedAnimSync* animSync = &pSync->m_aPedAnims[i];
 		if (animSync->m_nFlags & eAnimAssocFlags::ASSOC_RUNNING) {
-			CWeaponInfo* weaponInfo = CWeaponInfo::GetWeaponInfo(pSync->m_eCurWeaponType);
+			CWeaponInfo* weaponInfo = CWeaponInfo::GetWeaponInfo((eWeaponType)pSync->m_eCurWeaponType);
 			if (weaponInfo && weaponInfo->IsFlagSet(WEAPONFLAG_RELOAD)) {
 				if (animSync->m_nAnimId == AnimationId::ANIM_ATTACK_EXTRA1) {
 					reloadAnimIndex = i;
@@ -1092,6 +1184,10 @@ void sPed::ApplyClientSync(uint16 nTime) {
 }
 
 void sPed::Update(uint16 nTime) {
+#ifdef DEBUG_MULTIGAME
+	//debug("elem 0x%p %d %d\n", this, GetOwner(), GetID());
+	assert(GetEntity() && GetEntity()->m_rwObject);
+#endif
 	GetEntity()->UpdateRpHAnim();
 	AttachSync(nTime, new sPedSync((CPed*)GetEntity()));
 }
@@ -1268,11 +1364,33 @@ void sPed::ReadSyncFromStream(sReadSyncStream* pSyncStream, sElementSync* pOutSy
 			}
 
 			// wheelie
-			float roll = pBikeSync->m_fWheelieRoll; // боковой наклон/roll/lean
 			CVector pos = sync.GetMatrix().GetPosition();
-			sync.GetMatrix().SetRotate(pitch, roll, sync.m_fRotationCur);
+			sync.GetMatrix().SetRotate(pitch, pBikeSync->m_fLeanAngle, sync.m_fRotationCur);
 			sync.GetMatrix().Translate(pos);
 		}
+#ifdef MULTIGAME_BMX_IMPROVEMENTS
+		if (vehicleElem && vehicleElem->GetType() == eElementType::ELEMENT_TYPE_BMX)
+		{
+			sBmxSync* pBmxSync = vehicleElem->GetSync().bmx;
+
+			// pitch up (HALFPI - atan(cot), cot = up.z / |up_xy|)
+			float pitch = 0.0f;
+			if (pBmxSync->GetMatrix().GetUp().z < 1.0f)
+			{
+				float upXY2 = (SQR(pBmxSync->GetMatrix().GetUp().x) + SQR(pBmxSync->GetMatrix().GetUp().y));
+				if (upXY2 > 0.0f)
+				{
+					float xy = sqrt(upXY2);
+					pitch = atan2(xy, pBmxSync->GetMatrix().GetUp().z);
+				}
+			}
+
+			// wheelie
+			CVector pos = sync.GetMatrix().GetPosition();
+			sync.GetMatrix().SetRotate(pitch, pBmxSync->m_fLeanAngle, sync.m_fRotationCur);
+			sync.GetMatrix().Translate(pos);
+		}
+#endif
 		else if (vehicleElem && vehicleElem->GetType() == eElementType::ELEMENT_TYPE_AUTOMOBILE)
 		{
 			sAutomobileSync* pAutomobile = vehicleElem->GetSync().automobile;
@@ -1318,14 +1436,14 @@ void sPed::ReadSyncFromStream(sReadSyncStream* pSyncStream, sElementSync* pOutSy
 			anim.m_nAnimId, anim.m_nGroupId, anim.m_nFlags);
 	}
 
-#ifndef GTA_LIBERTY
-	if (nDiffMask & ePedSync::MP_PKTD_PED_PHYS_LVCS_FLAGS_B)
-	{
+#ifndef GTA_LIBERTY // sElementPhysical part sElementPhysical::ReadSyncFromStreamPhysical
+	if (nDiffMask & ePedSync::MP_PKTD_PED_PHYS_LVCS_FLAGS_B) {
 		uint8 flagsB = pSyncStream->ReadU8();
 		assert(GetPhysical());
 		GetPhysical()->m_nPhys_lvcs_unk_flagsB = flagsB;
 		GetPhysical()->b4E_8 = false;
-		if (GetOwner() == TheMPGame.LocalPlayerID()) {
+
+		if (GetOwner() == cMultiGame::Instance().LocalPlayerID()) {
 			assert(GetEntity());
 			((CPhysical*)GetEntity())->m_nPhys_lvcs_unk_flagsB = flagsB;
 		}
@@ -1344,7 +1462,7 @@ void sPed::ReceiveEntity(uint8 nOwner, uint16 nID, uint16 nTime)
 
 	sPedSync* pSync = GetSync().ped;
 	uint32 modelIndex = pSync->m_nPedType == ePedType::PEDTYPE_COP ? m_nCopModelIndex : GetPhysical()->GetModelIndex();
-	CPed* ped = CPopulation::AddPed(pSync->m_nPedType, modelIndex, pSync->GetMatrix().GetPosition());
+	CPed* ped = CPopulation::AddPed((ePedType)pSync->m_nPedType, modelIndex, pSync->GetMatrix().GetPosition(), 0, false);
 	Game.AttachEntity(this, ped);
 	SetEntity(ped);
 	ped->SetMatrix(pSync->GetMatrix());
@@ -1359,10 +1477,10 @@ void sPed::ReceiveEntity(uint8 nOwner, uint16 nID, uint16 nTime)
 	ped->m_currentWeapon = pSync->m_eCurWeaponType;
 	if (ped->m_nPedType != pSync->m_nPedType) {
 		CPopulation::UpdatePedCount(ped->m_nPedType, true);
-		ped->m_nPedType = pSync->m_nPedType;
+		ped->m_nPedType = (ePedType)pSync->m_nPedType;
 		CPopulation::UpdatePedCount(ped->m_nPedType, false);
 	}
-	ped->m_objective = pSync->m_nObjective;
+	ped->m_objective = (eObjective)pSync->m_nObjective;
 	ped->bBodyPartJustCameOff = pSync->m_bBodyPartJustCameOff;
 	ped->bIsPedDieAnimPlaying = pSync->m_bIsPedDieAnimPlaying;
 	ped->m_nTeamIdMG = pSync->m_nPlayerTeam;
@@ -1384,7 +1502,7 @@ void sPed::ReceiveEntity(uint8 nOwner, uint16 nID, uint16 nTime)
 			ped->SetMyVehicle((CVehicle*)veh->GetEntity());
 			ped->m_pCollidingEntity = (CEntity*)ped->m_pMyVehicle;
 			ped->bUsesCollision = false;
-			ped->SetPedState(pSync->m_nPedState);
+			ped->SetPedState((PedState)pSync->m_nPedState);
 			ped->AddInCarAnims(ped->m_pMyVehicle, true);
 			ped->m_pMyVehicle->SetDriverPed(ped);
 		}
@@ -1395,7 +1513,7 @@ void sPed::ReceiveEntity(uint8 nOwner, uint16 nID, uint16 nTime)
 				ped->GetMatrix().GetPosition().x, ped->GetMatrix().GetPosition().y, ped->GetMatrix().GetPosition().z);
 		}
 	}
-	ped->SetPedState(pSync->m_nPedState);
+	ped->SetPedState((PedState)pSync->m_nPedState);
 	std::vector<sPed*>::iterator loc = std::find(ms_peds.begin(), ms_peds.end(), this);
 	if (loc != ms_peds.end()) ms_peds.erase(loc);
 	sElementPhysical::ReceiveEntity(nOwner, nID, nTime);
@@ -1549,6 +1667,7 @@ void sPed::TransferEntity(int16 nDestPlayer) {
 }
 
 void sPed::CompareSyncState(tPedSyncsDeltas* pDiff, sPedSync* pSync, sPedSync* pLastSync, uint32 nDelta) {
+	// maybe smth for FLT_EPS_NOT_EQ?
 	const float POSITION_EPSILON = 0.001f; // recheck if gcc shit
 	const float ROTATION_EPSILON = 0.001f;
 	const float MOVE_SPEED_EPSILON = 0.001f;
@@ -1676,6 +1795,9 @@ void sPed::CompareSyncState(tPedSyncsDeltas* pDiff, sPedSync* pSync, sPedSync* p
 
 bool sPed::WriteSyncDelta(sWriteSyncStream* pSyncStream, sPedSync* pSync, sPedSync* pLastSync, uint32 nDelta) {
 	tPedSyncsDeltas pedDeltaManager{};
+#ifdef FIX_BUGS
+	pedDeltaManager.SetEqual();
+#endif
 	CompareSyncState(&pedDeltaManager, pSync, pLastSync, nDelta);
 
 	if (pedDeltaManager.nPedDiff == ePedSync::MP_PKTD_PED_EQUAL) // main delta
@@ -2022,3 +2144,1128 @@ void sPed::UpdateAnim(uint16 nTime, float fDelta) {
 
 std::vector<sPed*> sPed::ms_peds;
 int32 sPed::ms_nNumberOfSyncedPeds = 0;
+
+// Audio
+enum
+{
+	PED_ONE_SHOT_SHIRT_FLAP_MAX_DIST = 15,
+	PED_ONE_SHOT_SHIRT_FLAP_VOLUME = 90,
+
+	PED_ONE_SHOT_MINIGUN_MAX_DIST = 150,
+	PED_ONE_SHOT_MINIGUN_VOLUME = MAX_VOLUME,
+
+	PED_ONE_SHOT_SKATING_MAX_DIST = 20,
+	PED_ONE_SHOT_SKATING_VOLUME = 70,
+
+	PED_ONE_SHOT_STEP_MAX_DIST = 20,
+	PED_ONE_SHOT_STEP_VOLUME = 45,
+
+	PED_ONE_SHOT_FALL_MAX_DIST = 30,
+	PED_ONE_SHOT_FALL_VOLUME = 80,
+
+	PED_ONE_SHOT_PUNCH_MAX_DIST = 30,
+	PED_ONE_SHOT_PUNCH_VOLUME = 100,
+
+	PED_ONE_SHOT_WEAPON_COLT45_VOLUME = 90,
+	PED_ONE_SHOT_WEAPON_UZI_VOLUME = 70,
+	PED_ONE_SHOT_WEAPON_SHOTGUN_VOLUME = 100,
+	PED_ONE_SHOT_WEAPON_M4_VOLUME = 90,
+	PED_ONE_SHOT_WEAPON_M16_VOLUME = MAX_VOLUME,
+	PED_ONE_SHOT_WEAPON_SNIPERRIFLE_VOLUME = 110,
+	PED_ONE_SHOT_WEAPON_ROCKETLAUNCHER_VOLUME = 80,
+
+	PED_ONE_SHOT_WEAPON_FLAMETHROWER_MAX_DIST = 60,
+	PED_ONE_SHOT_WEAPON_FLAMETHROWER_VOLUME = 90,
+
+	PED_ONE_SHOT_WEAPON_RELOAD_MAX_DIST = 30,
+	PED_ONE_SHOT_WEAPON_RELOAD_VOLUME = 75,
+
+	PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST = 120,
+	PED_ONE_SHOT_WEAPON_BULLET_ECHO_VOLUME = 80,
+
+	PED_ONE_SHOT_WEAPON_FLAMETHROWER_FIRE_MAX_DIST = 60,
+	PED_ONE_SHOT_WEAPON_FLAMETHROWER_FIRE_VOLUME = 70,
+
+	PED_ONE_SHOT_WEAPON_CHAINSAW_MAX_DIST = 60,
+	PED_ONE_SHOT_WEAPON_CHAINSAW_IDLE_MAX_DIST = 50,
+	PED_ONE_SHOT_WEAPON_CHAINSAW_VOLUME = 100,
+
+	PED_ONE_SHOT_WEAPON_HIT_PED_MAX_DIST = 30,
+	PED_ONE_SHOT_WEAPON_HIT_PED_VOLUME = 90,
+
+	PED_ONE_SHOT_SPLASH_MAX_DIST = 40,
+	PED_ONE_SHOT_SPLASH_PED_VOLUME = 70,
+
+	PED_COMMENT_MAX_DIST = 40,
+	PED_COMMENT_POLICE_HELI_MAX_DIST = 400,
+};
+
+void cAudioManager::ProcessMultiplayerPed(cPedMG* ped)
+{
+	cPedParams params;
+
+	m_sQueueSample.m_vecPos = ped->GetPosition();
+
+	params.m_bDistanceCalculated = FALSE;
+	params.m_pNetPed = ped;
+	params.m_fDistance = GetDistanceSquared(m_sQueueSample.m_vecPos);
+	ProcessMultiplayerPedOneShots(params);
+}
+
+void cAudioManager::ProcessMultiplayerPedOneShots(cPedParams& params)
+{
+    uint8 Vol;
+    uint32 sampleIndex;
+
+    cPedMG* ped = params.m_pNetPed;
+	sPed* pPed = params.m_pNetPed->GetElement().ped;
+
+    bool8 narrowSoundRange;
+    int16 sound;
+    bool8 stereo;
+    //CWeapon* weapon;
+#ifdef FIX_BUGS
+    float maxDist = 0.0f; // uninitialized variable
+#else
+    float maxDist;
+#endif
+
+    static uint8 iSound = 21;
+    static uint32 iSplashFrame = 0;
+
+	TODO();
+	TODO();
+	TODO(); // SFX_FIGHT_5
+	TODO(); // SFX_FIGHT_2
+	TODO();
+	TODO();
+
+    //weapon = params.m_pPed->GetWeapon();
+    for (uint32 i = 0; i < m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_AudioEvents; i++)
+    {
+        stereo = FALSE;
+        narrowSoundRange = FALSE;
+        SET_SOUND_REFLECTION(FALSE);
+        sound = m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_awAudioEvent[i];
+        switch (sound)
+        {
+            case SOUND_STEP_START:
+            case SOUND_STEP_END:
+            {
+                if (pPed->GetSync().ped->m_nPedState == PedState::PED_JUMP ||
+#if !defined(GTA_LIBERTY) && defined(FIX_BUGS) // need?
+					//pPed->GetSync().ped->m_nPedState == PedState::PED_LEDGE_JUMP ||
+#endif
+					pPed->GetSync().ped->m_nPedState == PedState::PED_FALL)
+                    continue;
+
+                Vol = m_anRandomTable[3] % 15 + PED_ONE_SHOT_STEP_VOLUME;
+                //if (FindPlayerPed() != m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_pEntity)
+                //    Vol >>= 1;
+                maxDist = SQR(PED_ONE_SHOT_STEP_MAX_DIST);
+                switch (pPed->GetSync().ped->m_nSurfaceTouched)
+                {
+					case SURFACE_GRASS:
+						TODO(); // if else
+						sampleIndex = m_anRandomTable[1] % 4 + SFX_FOOTSTEP_GRASS_1;
+						break;
+					case SURFACE_GRAVEL:
+					case SURFACE_MUD_DRY:
+						TODO(); // if else
+						sampleIndex = m_anRandomTable[4] % 5 + SFX_FOOTSTEP_GRAVEL_1;
+						break;
+					case SURFACE_CAR:
+					case SURFACE_GARAGE_DOOR:
+					case SURFACE_CAR_PANEL:
+					case SURFACE_THICK_METAL_PLATE:
+					case SURFACE_SCAFFOLD_POLE:
+					case SURFACE_LAMP_POST:
+					case SURFACE_FIRE_HYDRANT:
+					case SURFACE_GIRDER:
+					case SURFACE_METAL_CHAIN_FENCE:
+					case SURFACE_CONTAINER:
+					case SURFACE_NEWS_VENDOR:
+						sampleIndex = m_anRandomTable[0] % 5 + SFX_FOOTSTEP_METAL_1;
+						break;
+					case SURFACE_SAND:
+						sampleIndex = m_anRandomTable[4] % 4 + SFX_FOOTSTEP_SAND_1;
+						break;
+					case SURFACE_WATER:
+						sampleIndex = m_anRandomTable[3] % 4 + SFX_FOOTSTEP_WATER_1;
+						break;
+					case SURFACE_WOOD_CRATES:
+					case SURFACE_WOOD_BENCH:
+					case SURFACE_WOOD_SOLID:
+						sampleIndex = m_anRandomTable[2] % 5 + SFX_FOOTSTEP_WOOD_1;
+						break;
+					case SURFACE_HEDGE:
+						sampleIndex = m_anRandomTable[2] % 3 + SFX_COL_VEG_1;
+						break;
+					default:
+						sampleIndex = m_anRandomTable[2] % 5 + SFX_FOOTSTEP_CONCRETE_1;
+						break;
+                }
+                m_sQueueSample.m_nSampleIndex = sampleIndex;
+                m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+                m_sQueueSample.m_nCounter = m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_awAudioEvent[i] - SOUND_STEP_START + 1;
+                m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(m_sQueueSample.m_nSampleIndex);
+                m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency / 17);
+                switch (pPed->GetSync().ped->m_nMoveState)
+                {
+					case PEDMOVE_WALK:
+						Vol >>= 2;
+						m_sQueueSample.m_nFrequency = 9 * m_sQueueSample.m_nFrequency / 10;
+						break;
+					case PEDMOVE_RUN:
+						Vol >>= 1;
+						m_sQueueSample.m_nFrequency = 11 * m_sQueueSample.m_nFrequency / 10;
+						break;
+					case PEDMOVE_SPRINT:
+						m_sQueueSample.m_nFrequency = 12 * m_sQueueSample.m_nFrequency / 10;
+						break;
+					default:
+						break;
+                }
+                m_sQueueSample.m_nPriority = 5;
+                m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+                m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_STEP_MAX_DIST;
+                m_sQueueSample.m_nLoopCount = 1;
+                RESET_LOOP_OFFSETS
+                    SET_EMITTING_VOLUME(Vol);
+                m_sQueueSample.m_bIs2D = FALSE;
+                m_sQueueSample.m_bStatic = TRUE;
+                SET_SOUND_REFLECTION(TRUE);
+                break;
+            }
+            case SOUND_FALL_LAND:
+            case SOUND_FALL_COLLAPSE:
+            case SOUND_49:
+            {
+                //if (ped->bIsInTheAir)
+                //    continue;
+                //maxDist = SQR(PED_ONE_SHOT_FALL_MAX_DIST);
+                //Vol = m_anRandomTable[3] % 20 + PED_ONE_SHOT_FALL_VOLUME;
+                //if (ped->m_nSurfaceTouched == SURFACE_WATER)
+                //    m_sQueueSample.m_nSampleIndex = (m_anRandomTable[3] % 4) + SFX_FOOTSTEP_WATER_1;
+                //else if (sound == SOUND_FALL_LAND)
+                //    m_sQueueSample.m_nSampleIndex = SFX_BODY_LAND;
+                //else
+                //    m_sQueueSample.m_nSampleIndex = SFX_BODY_LAND_AND_FALL;
+                //m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+                //m_sQueueSample.m_nCounter = 1;
+                //m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(m_sQueueSample.m_nSampleIndex);
+                //m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency / 17);
+                //m_sQueueSample.m_nPriority = 2;
+                //m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+                //m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_FALL_MAX_DIST;
+                //m_sQueueSample.m_nLoopCount = 1;
+                //RESET_LOOP_OFFSETS
+                //    SET_EMITTING_VOLUME(Vol);
+                //m_sQueueSample.m_bIs2D = FALSE;
+                //m_sQueueSample.m_bStatic = TRUE;
+                //SET_SOUND_REFLECTION(TRUE);
+                break;
+            }
+            case SOUND_FIGHT_37:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_1;
+                m_sQueueSample.m_nFrequency = 18000;
+                goto AddFightSound;
+            case SOUND_FIGHT_38:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_1;
+                m_sQueueSample.m_nFrequency = 16500;
+                goto AddFightSound;
+            case SOUND_FIGHT_39:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_1;
+                m_sQueueSample.m_nFrequency = 20000;
+                goto AddFightSound;
+            case SOUND_FIGHT_40:
+            case SOUND_187:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_2;
+                m_sQueueSample.m_nFrequency = 18000;
+                goto AddFightSound;
+            case SOUND_FIGHT_41:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_2;
+                m_sQueueSample.m_nFrequency = 16500;
+                goto AddFightSound;
+            case SOUND_FIGHT_42:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_2;
+                m_sQueueSample.m_nFrequency = 20000;
+                goto AddFightSound;
+            case SOUND_FIGHT_43:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_4;
+                m_sQueueSample.m_nFrequency = 18000;
+                goto AddFightSound;
+            case SOUND_FIGHT_44:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_4;
+                m_sQueueSample.m_nFrequency = 16500;
+                goto AddFightSound;
+            case SOUND_FIGHT_45:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_4;
+                m_sQueueSample.m_nFrequency = 20000;
+                goto AddFightSound;
+            case SOUND_FIGHT_46:
+            case SOUND_188:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_5;
+                m_sQueueSample.m_nFrequency = 18000;
+                goto AddFightSound;
+            case SOUND_FIGHT_47:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_5;
+                m_sQueueSample.m_nFrequency = 16500;
+                goto AddFightSound;
+            case SOUND_FIGHT_48:
+                m_sQueueSample.m_nSampleIndex = SFX_FIGHT_5;
+                m_sQueueSample.m_nFrequency = 20000;
+            AddFightSound:
+            {
+                    uint32 soundParams = m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i]; // wtf? storing int as float
+                    uint8 damagerType = soundParams & 0xFF;
+                    uint32 weaponType = soundParams >> 8;
+
+                    if (damagerType == ENTITY_TYPE_PED)
+                    {
+                        if (weaponType == WEAPONTYPE_BRASSKNUCKLE)
+                        {
+                            /*
+                            cPedMG* ped = params.m_pNetPed;
+                            uint32 fightMove = ped->m_curFightMove;
+                            if (fightMove == FIGHTMOVE_BACKLEFT || fightMove == FIGHTMOVE_STDPUNCH || fightMove == FIGHTMOVE_PUNCH ||
+                                ped->m_nPedState == PED_ATTACK) {
+                                CEntity* damageEntity = ped->m_pDamageEntity;
+                                if (!damageEntity)
+                                    m_sQueueSample.m_nSampleIndex = m_anRandomTable[3] % 2 + SFX_HAMMER_HIT_1;
+                                else if (damageEntity->GetType() != ENTITY_TYPE_PED)
+                                    m_sQueueSample.m_nSampleIndex = m_anRandomTable[3] % 2 + SFX_HAMMER_HIT_1;
+                                else if (((CPed*)damageEntity)->m_curFightMove != FIGHTMOVE_HITHEAD)
+                                    m_sQueueSample.m_nSampleIndex = m_anRandomTable[3] % 2 + SFX_HAMMER_HIT_1;
+                                else
+                                    m_sQueueSample.m_nSampleIndex = SFX_HAMMER_HIT_1;
+                            }
+                            */
+                        }
+                    }
+                    else
+                    {
+                        m_sQueueSample.m_nSampleIndex = m_anRandomTable[4] % 6 + SFX_COL_CAR_PANEL_1;
+                        m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(m_sQueueSample.m_nSampleIndex);
+                        m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency / 16);
+                    }
+            }
+                m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+                m_sQueueSample.m_nCounter = iSound;
+                narrowSoundRange = TRUE;
+                iSound++;
+                m_sQueueSample.m_nPriority = 3;
+                m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+                m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_PUNCH_MAX_DIST;
+                maxDist = SQR(PED_ONE_SHOT_PUNCH_MAX_DIST);
+                m_sQueueSample.m_nLoopCount = 1;
+                RESET_LOOP_OFFSETS
+                    Vol = m_anRandomTable[3] % 26 + PED_ONE_SHOT_PUNCH_VOLUME;
+                SET_EMITTING_VOLUME(Vol);
+                m_sQueueSample.m_bIs2D = FALSE;
+                m_sQueueSample.m_bStatic = TRUE;
+                SET_SOUND_REFLECTION(TRUE);
+                break;
+            case SOUND_WEAPON_BAT_ATTACK:
+            case SOUND_WEAPON_KNIFE_ATTACK:
+            {
+                uint32 soundParams = m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i]; // wtf? storing int as float
+                uint8 damagerType = soundParams & 0xFF;
+                uint32 weaponType = soundParams >> 8;
+                if (damagerType == ENTITY_TYPE_PED)
+                {
+                    switch (weaponType)
+                    {
+						case WEAPONTYPE_SCREWDRIVER:
+						case WEAPONTYPE_KNIFE:
+						case WEAPONTYPE_CLEAVER:
+						case WEAPONTYPE_MACHETE:
+						case WEAPONTYPE_KATANA:
+							if (sound == SOUND_WEAPON_KNIFE_ATTACK)
+								m_sQueueSample.m_nSampleIndex = SFX_KNIFE_SLASH;
+							else
+								m_sQueueSample.m_nSampleIndex = SFX_KNIFE_STAB;
+							m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+							m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(m_sQueueSample.m_nSampleIndex);
+							m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+							break;
+						case WEAPONTYPE_HAMMER:
+							m_sQueueSample.m_nSampleIndex = m_anRandomTable[3] % 2 + SFX_HAMMER_HIT_1;
+							m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+							m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(m_sQueueSample.m_nSampleIndex);
+							m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+							break;
+						default:
+							m_sQueueSample.m_nSampleIndex = SFX_BAT_HIT_LEFT;
+							m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+							m_sQueueSample.m_nFrequency = RandomDisplacement(2000) + 22000;
+							stereo = TRUE;
+							break;
+                    }
+                }
+                else
+                {
+                    m_sQueueSample.m_nSampleIndex = m_anRandomTable[4] % 4 + SFX_COL_CAR_PANEL_1;
+                    m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+                    m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(m_sQueueSample.m_nSampleIndex);
+                    m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 4);
+                }
+                m_sQueueSample.m_nCounter = iSound++;
+                narrowSoundRange = TRUE;
+                m_sQueueSample.m_nPriority = 3;
+                m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+                m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_PUNCH_MAX_DIST;
+                maxDist = SQR(PED_ONE_SHOT_PUNCH_MAX_DIST);
+                m_sQueueSample.m_nLoopCount = 1;
+                RESET_LOOP_OFFSETS
+                    Vol = m_anRandomTable[2] % 20 + PED_ONE_SHOT_PUNCH_VOLUME;
+                SET_EMITTING_VOLUME(Vol);
+                m_sQueueSample.m_bIs2D = FALSE;
+                m_sQueueSample.m_bStatic = TRUE;
+                SET_SOUND_REFLECTION(TRUE);
+                break;
+            }
+            case SOUND_WEAPON_CHAINSAW_IDLE:
+                //if (FindVehicleOfPlayer()) // TODO PSP if ( !cSampleManager::IsSampleBankLoaded(SampleManager, SFX_BANK_CAR_CHAINSAW) )
+                //    continue;
+                m_sQueueSample.m_nSampleIndex = SFX_CAR_CHAINSAW_IDLE;
+#ifdef GTA_PS2
+                m_sQueueSample.m_nBankIndex = SFX_BANK_CAR_CHAINSAW;
+#else
+                m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+#endif
+                m_sQueueSample.m_nCounter = 70;
+                m_sQueueSample.m_nFrequency = 27000;
+                m_sQueueSample.m_nPriority = 3;
+                m_sQueueSample.m_fSpeedMultiplier = 3.0f;
+                m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_CHAINSAW_IDLE_MAX_DIST;
+                maxDist = SQR(PED_ONE_SHOT_WEAPON_CHAINSAW_IDLE_MAX_DIST);
+                m_sQueueSample.m_nLoopCount = 0;
+                Vol = PED_ONE_SHOT_WEAPON_CHAINSAW_VOLUME;
+                SET_LOOP_OFFSETS(SFX_CAR_CHAINSAW_IDLE)
+                    SET_EMITTING_VOLUME(PED_ONE_SHOT_WEAPON_CHAINSAW_VOLUME);
+                m_sQueueSample.m_bIs2D = FALSE;
+                m_sQueueSample.m_bStatic = FALSE;
+                m_sQueueSample.m_nFramesToPlay = 5;
+                break;
+            case SOUND_WEAPON_CHAINSAW_ATTACK:
+				//if (FindVehicleOfPlayer()) // TODO PSP if ( !cSampleManager::IsSampleBankLoaded(SampleManager, SFX_BANK_CAR_CHAINSAW) )
+				//    continue;
+                m_sQueueSample.m_nSampleIndex = SFX_CAR_CHAINSAW_ATTACK;
+#ifdef GTA_PS2
+                m_sQueueSample.m_nBankIndex = SFX_BANK_CAR_CHAINSAW;
+#else
+                m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+#endif
+                m_sQueueSample.m_nCounter = 68;
+                m_sQueueSample.m_nFrequency = 27000;
+                m_sQueueSample.m_nPriority = 2;
+                m_sQueueSample.m_fSpeedMultiplier = 3.0f;
+                m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_CHAINSAW_MAX_DIST;
+                maxDist = SQR(PED_ONE_SHOT_WEAPON_CHAINSAW_MAX_DIST);
+                m_sQueueSample.m_nLoopCount = 0;
+                Vol = PED_ONE_SHOT_WEAPON_CHAINSAW_VOLUME;
+                SET_LOOP_OFFSETS(SFX_CAR_CHAINSAW_ATTACK)
+                    SET_EMITTING_VOLUME(PED_ONE_SHOT_WEAPON_CHAINSAW_VOLUME);
+                m_sQueueSample.m_bIs2D = FALSE;
+                m_sQueueSample.m_bStatic = FALSE;
+                m_sQueueSample.m_nFramesToPlay = 5;
+                break;
+            case SOUND_WEAPON_CHAINSAW_MADECONTACT:
+				//if (FindVehicleOfPlayer()) // TODO PSP if ( !cSampleManager::IsSampleBankLoaded(SampleManager, SFX_BANK_CAR_CHAINSAW) )
+				//    continue;
+				// fix bugs?
+                //if ((int32)m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i] != ENTITY_TYPE_PED)
+                //    ReportCollision(params.m_pNetPed, params.m_pNetPed, SURFACE_CAR, SURFACE_TARMAC, 0.0f, 0.09f);
+                m_sQueueSample.m_nSampleIndex = SFX_CAR_CHAINSAW_ATTACK;
+#ifdef GTA_PS2
+                m_sQueueSample.m_nBankIndex = SFX_BANK_CAR_CHAINSAW;
+#else
+                m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+#endif
+                m_sQueueSample.m_nCounter = 68;
+                m_sQueueSample.m_nFrequency = RandomDisplacement(500) + 22000;
+                m_sQueueSample.m_nPriority = 2;
+                m_sQueueSample.m_fSpeedMultiplier = 3.0f;
+                m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_CHAINSAW_MAX_DIST;
+                maxDist = SQR(PED_ONE_SHOT_WEAPON_CHAINSAW_MAX_DIST);
+                m_sQueueSample.m_nLoopCount = 0;
+                Vol = PED_ONE_SHOT_WEAPON_CHAINSAW_VOLUME;
+                SET_LOOP_OFFSETS(SFX_CAR_CHAINSAW_ATTACK)
+                    SET_EMITTING_VOLUME(PED_ONE_SHOT_WEAPON_CHAINSAW_VOLUME);
+                m_sQueueSample.m_bIs2D = FALSE;
+                m_sQueueSample.m_bStatic = FALSE;
+                m_sQueueSample.m_nFramesToPlay = 5;
+                break;
+            case SOUND_WEAPON_SHOT_FIRED:
+				//eWeaponType weapon = ped->m_storedWeapon;
+                //if (!weapon) // ptr leftower?
+                //    continue;
+                switch (ped->m_storedWeapon)
+                {
+					case WEAPONTYPE_PYTHON:
+						m_sQueueSample.m_nSampleIndex = SFX_PYTHON_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_PYTHON_LEFT);
+						m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = MAX_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						SET_SOUND_REFLECTION(TRUE);
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_COLT45:
+						m_sQueueSample.m_nSampleIndex = SFX_COLT45_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_COLT45_LEFT);
+						m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = m_anRandomTable[1] % 10 + PED_ONE_SHOT_WEAPON_COLT45_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						SET_SOUND_REFLECTION(TRUE);
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_ROCKET:
+					case WEAPONTYPE_ROCKETLAUNCHER:
+						m_sQueueSample.m_nSampleIndex = SFX_ROCKET_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_ROCKET_LEFT);
+						m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+						m_sQueueSample.m_nPriority = 1;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = m_anRandomTable[0] % 20 + PED_ONE_SHOT_WEAPON_ROCKETLAUNCHER_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						SET_SOUND_REFLECTION(TRUE);
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_FLAMETHROWER:
+						m_sQueueSample.m_nSampleIndex = SFX_FLAMETHROWER_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = 9;
+						Vol = PED_ONE_SHOT_WEAPON_FLAMETHROWER_VOLUME;
+						m_sQueueSample.m_nFrequency = (10 * m_sQueueSample.m_nEntityIndex % 2048) + SampleManager.GetSampleBaseFrequency(SFX_FLAMETHROWER_LEFT);
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 4.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_FLAMETHROWER_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_FLAMETHROWER_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 0;
+						SET_LOOP_OFFSETS(m_sQueueSample.m_nSampleIndex)
+							SET_EMITTING_VOLUME(PED_ONE_SHOT_WEAPON_FLAMETHROWER_VOLUME);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = FALSE;
+						m_sQueueSample.m_nFramesToPlay = 6;
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_M60:
+					case WEAPONTYPE_HELICANNON:
+						m_sQueueSample.m_nSampleIndex = SFX_M60_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_M60_LEFT);
+						m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = PED_ONE_SHOT_WEAPON_M16_VOLUME;
+						SET_EMITTING_VOLUME(PED_ONE_SHOT_WEAPON_M16_VOLUME);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_MP5:
+						m_sQueueSample.m_nSampleIndex = SFX_MP5_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_MP5_LEFT);
+						m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = m_anRandomTable[3] % 15 + PED_ONE_SHOT_WEAPON_UZI_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_TEC9:
+						m_sQueueSample.m_nSampleIndex = SFX_TEC_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = RandomDisplacement(500) + 17000;
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = m_anRandomTable[3] % 15 + PED_ONE_SHOT_WEAPON_UZI_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_SILENCED_INGRAM:
+						m_sQueueSample.m_nSampleIndex = SFX_TEC_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = RandomDisplacement(1000) + 34000;
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = m_anRandomTable[3] % 15 + PED_ONE_SHOT_WEAPON_UZI_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_RUGER:
+						m_sQueueSample.m_nSampleIndex = SFX_RUGER_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_RUGER_LEFT);
+						m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = m_anRandomTable[3] % 15 + PED_ONE_SHOT_WEAPON_M4_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_M4:
+						m_sQueueSample.m_nSampleIndex = SFX_RUGER_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = RandomDisplacement(1000) + 43150;
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = m_anRandomTable[3] % 15 + PED_ONE_SHOT_WEAPON_M4_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_UZI:
+					case WEAPONTYPE_MINIGUN:
+						m_sQueueSample.m_nSampleIndex = SFX_UZI_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_UZI_LEFT);
+						m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = m_anRandomTable[3] % 15 + PED_ONE_SHOT_WEAPON_UZI_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_SNIPERRIFLE:
+					case WEAPONTYPE_LASERSCOPE:
+						m_sQueueSample.m_nSampleIndex = SFX_SNIPER_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						if (ped->m_storedWeapon == WEAPONTYPE_SNIPERRIFLE)
+							m_sQueueSample.m_nFrequency = 25472;
+						else
+							m_sQueueSample.m_nFrequency = 20182;
+						m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = m_anRandomTable[4] % 10 + PED_ONE_SHOT_WEAPON_SNIPERRIFLE_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						SET_SOUND_REFLECTION(TRUE);
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_SPAS12_SHOTGUN:
+						m_sQueueSample.m_nSampleIndex = SFX_SPAS12_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_SPAS12_LEFT);
+						m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = m_anRandomTable[2] % 10 + PED_ONE_SHOT_WEAPON_SHOTGUN_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						SET_SOUND_REFLECTION(TRUE);
+						stereo = TRUE;
+						break;
+					case WEAPONTYPE_SHOTGUN:
+					case WEAPONTYPE_STUBBY_SHOTGUN:
+						m_sQueueSample.m_nSampleIndex = SFX_SHOTGUN_LEFT;
+						m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+						m_sQueueSample.m_nCounter = iSound++;
+						narrowSoundRange = TRUE;
+						m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_SHOTGUN_LEFT);
+						m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 5);
+						m_sQueueSample.m_nPriority = 3;
+						m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+						m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+						maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+						m_sQueueSample.m_nLoopCount = 1;
+						RESET_LOOP_OFFSETS
+							Vol = m_anRandomTable[2] % 10 + PED_ONE_SHOT_WEAPON_SHOTGUN_VOLUME;
+						SET_EMITTING_VOLUME(Vol);
+						m_sQueueSample.m_bIs2D = FALSE;
+						m_sQueueSample.m_bStatic = TRUE;
+						SET_SOUND_REFLECTION(TRUE);
+						stereo = FALSE;
+						break;
+					default:
+						continue;
+                }
+                break;
+            case SOUND_WEAPON_RELOAD:
+                switch ((int32)m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i])
+                {
+                    case WEAPONTYPE_COLT45:
+                    case WEAPONTYPE_PYTHON:
+                        m_sQueueSample.m_nSampleIndex = SFX_PISTOL_RELOAD;
+                        m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_PISTOL_RELOAD) + RandomDisplacement(300);
+                        break;
+                    case WEAPONTYPE_TEC9:
+                    case WEAPONTYPE_UZI:
+                    case WEAPONTYPE_SILENCED_INGRAM:
+                    case WEAPONTYPE_MP5:
+                    case WEAPONTYPE_M4:
+                    case WEAPONTYPE_M60:
+                    case WEAPONTYPE_HELICANNON:
+                        m_sQueueSample.m_nSampleIndex = SFX_AK47_RELOAD;
+                        m_sQueueSample.m_nFrequency = 39243;
+                        break;
+                    case WEAPONTYPE_SHOTGUN:
+                    case WEAPONTYPE_SPAS12_SHOTGUN:
+                    case WEAPONTYPE_STUBBY_SHOTGUN:
+                    case WEAPONTYPE_RUGER:
+                        m_sQueueSample.m_nSampleIndex = SFX_AK47_RELOAD;
+                        m_sQueueSample.m_nFrequency = 30290;
+                        break;
+                    case WEAPONTYPE_ROCKET:
+                    case WEAPONTYPE_ROCKETLAUNCHER:
+                        m_sQueueSample.m_nSampleIndex = SFX_ROCKET_RELOAD;
+                        m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_ROCKET_RELOAD);
+                        break;
+                    case WEAPONTYPE_SNIPERRIFLE:
+                    case WEAPONTYPE_LASERSCOPE:
+                        m_sQueueSample.m_nSampleIndex = SFX_RIFLE_RELOAD;
+                        m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_RIFLE_RELOAD);
+                        break;
+                    default:
+                        continue;
+                }
+                Vol = PED_ONE_SHOT_WEAPON_RELOAD_VOLUME;
+                m_sQueueSample.m_nCounter = iSound++;
+                narrowSoundRange = TRUE;
+                m_sQueueSample.m_nFrequency += RandomDisplacement(300);
+                m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+                m_sQueueSample.m_nPriority = 5;
+                m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+                m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_RELOAD_MAX_DIST;
+                maxDist = SQR(PED_ONE_SHOT_WEAPON_RELOAD_MAX_DIST);
+                m_sQueueSample.m_nLoopCount = 1;
+                RESET_LOOP_OFFSETS
+                SET_EMITTING_VOLUME(PED_ONE_SHOT_WEAPON_RELOAD_VOLUME);
+                m_sQueueSample.m_bIs2D = FALSE;
+                m_sQueueSample.m_bStatic = TRUE;
+                SET_SOUND_REFLECTION(TRUE);
+                break;
+     //       case SOUND_WEAPON_AK47_BULLET_ECHO:
+     //       {
+     //           uint32 weaponType = m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i];
+     //           switch (weaponType)
+     //           {
+					//case WEAPONTYPE_SPAS12_SHOTGUN:
+					//	m_sQueueSample.m_nSampleIndex = SFX_SPAS12_TAIL_LEFT;
+					//	break;
+					//case WEAPONTYPE_M60:
+					//case WEAPONTYPE_HELICANNON:
+					//	m_sQueueSample.m_nSampleIndex = SFX_SPAS12_TAIL_LEFT;
+					//case WEAPONTYPE_UZI:
+					//case WEAPONTYPE_MP5:
+					//	m_sQueueSample.m_nSampleIndex = SFX_UZI_END_LEFT;
+					//	break;
+					//case WEAPONTYPE_TEC9:
+					//case WEAPONTYPE_SILENCED_INGRAM:
+					//	m_sQueueSample.m_nSampleIndex = SFX_TEC_TAIL;
+					//	break;
+					//case WEAPONTYPE_M4:
+					//case WEAPONTYPE_RUGER:
+					//case WEAPONTYPE_SNIPERRIFLE:
+					//case WEAPONTYPE_LASERSCOPE:
+					//	m_sQueueSample.m_nSampleIndex = SFX_RUGER_TAIL;
+					//	break;
+					//	break;
+					//default:
+					//	continue;
+     //           }
+     //           m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+     //           m_sQueueSample.m_nCounter = iSound++;
+     //           narrowSoundRange = TRUE;
+     //           switch (weaponType)
+     //           {
+					//case WEAPONTYPE_SILENCED_INGRAM:
+					//	m_sQueueSample.m_nFrequency = 26000;
+					//	break;
+					//case WEAPONTYPE_TEC9:
+					//	m_sQueueSample.m_nFrequency = 13000;
+					//	break;
+					//case WEAPONTYPE_M4:
+					//	m_sQueueSample.m_nFrequency = 15600;
+					//	break;
+					//case WEAPONTYPE_LASERSCOPE:
+					//	m_sQueueSample.m_nFrequency = 7904;
+					//	break;
+					//case WEAPONTYPE_SNIPERRIFLE:
+					//	m_sQueueSample.m_nFrequency = 9959;
+					//	break;
+					//default:
+					//	m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(m_sQueueSample.m_nSampleIndex);
+					//	break;
+     //           }
+     //           m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 4);
+     //           m_sQueueSample.m_nPriority = 3;
+     //           m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+     //           m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST;
+     //           maxDist = SQR(PED_ONE_SHOT_WEAPON_BULLET_ECHO_MAX_DIST);
+     //           m_sQueueSample.m_nLoopCount = 1;
+     //           RESET_LOOP_OFFSETS
+     //               Vol = m_anRandomTable[4] % 10 + PED_ONE_SHOT_WEAPON_BULLET_ECHO_VOLUME;
+     //           SET_EMITTING_VOLUME(Vol);
+     //           m_sQueueSample.m_bIs2D = FALSE;
+     //           m_sQueueSample.m_bStatic = TRUE;
+     //           SET_SOUND_REFLECTION(TRUE);
+     //           break;
+     //       }
+     //       case SOUND_WEAPON_FLAMETHROWER_FIRE:
+     //           m_sQueueSample.m_nSampleIndex = SFX_FLAMETHROWER_START_LEFT;
+     //           m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+     //           m_sQueueSample.m_nCounter = iSound++;
+     //           m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_FLAMETHROWER_START_LEFT);
+     //           m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 4);
+     //           m_sQueueSample.m_nPriority = 3;
+     //           m_sQueueSample.m_fSpeedMultiplier = 4.0f;
+     //           m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_FLAMETHROWER_FIRE_MAX_DIST;
+     //           maxDist = SQR(PED_ONE_SHOT_WEAPON_FLAMETHROWER_FIRE_MAX_DIST);
+     //           m_sQueueSample.m_nLoopCount = 1;
+     //           RESET_LOOP_OFFSETS
+     //               Vol = PED_ONE_SHOT_WEAPON_FLAMETHROWER_FIRE_VOLUME;
+     //           SET_EMITTING_VOLUME(PED_ONE_SHOT_WEAPON_FLAMETHROWER_FIRE_VOLUME);
+     //           m_sQueueSample.m_bIs2D = FALSE;
+     //           m_sQueueSample.m_bStatic = TRUE;
+     //           break;
+     //       case SOUND_WEAPON_HIT_PED:
+     //           m_sQueueSample.m_nSampleIndex = SFX_BULLET_PED;
+     //           m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+     //           m_sQueueSample.m_nCounter = iSound++;
+     //           narrowSoundRange = TRUE;
+     //           m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_BULLET_PED);
+     //           m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 3);
+     //           m_sQueueSample.m_nPriority = 7;
+     //           m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+     //           m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_HIT_PED_MAX_DIST;
+     //           maxDist = SQR(PED_ONE_SHOT_WEAPON_HIT_PED_MAX_DIST);
+     //           m_sQueueSample.m_nLoopCount = 1;
+     //           RESET_LOOP_OFFSETS
+     //               Vol = m_anRandomTable[0] % 20 + PED_ONE_SHOT_WEAPON_HIT_PED_VOLUME;
+     //           SET_EMITTING_VOLUME(Vol);
+     //           m_sQueueSample.m_bIs2D = FALSE;
+     //           m_sQueueSample.m_bStatic = TRUE;
+     //           break;
+     //       case SOUND_SPLASH:
+     //           if (m_FrameCounter <= iSplashFrame)
+     //               continue;
+     //           iSplashFrame = m_FrameCounter + 6;
+     //           m_sQueueSample.m_nSampleIndex = SFX_SPLASH_1;
+     //           m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+     //           m_sQueueSample.m_nCounter = iSound++;
+     //           narrowSoundRange = TRUE;
+     //           m_sQueueSample.m_nFrequency = RandomDisplacement(1400) + 20000;
+     //           m_sQueueSample.m_nPriority = 1;
+     //           m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+     //           m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_SPLASH_MAX_DIST;
+     //           maxDist = SQR(PED_ONE_SHOT_SPLASH_MAX_DIST);
+     //           m_sQueueSample.m_nLoopCount = 1;
+     //           RESET_LOOP_OFFSETS
+     //               Vol = m_anRandomTable[2] % 30 + PED_ONE_SHOT_SPLASH_PED_VOLUME;
+     //           SET_EMITTING_VOLUME(Vol);
+     //           m_sQueueSample.m_bIs2D = FALSE;
+     //           m_sQueueSample.m_bStatic = TRUE;
+     //           SET_SOUND_REFLECTION(TRUE);
+     //           break;
+     //       case SOUND_FRONTEND_HURRICANE: // VCS TODO!!
+
+     //           break;
+     //       case SOUND_MELEE_ATTACK_START:
+     //       {
+     //           uint32 weaponType = ((uint32)m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i]) >> 8;
+     //           switch (weaponType)
+     //           {
+     //           case WEAPONTYPE_SCREWDRIVER:
+     //           case WEAPONTYPE_KNIFE:
+     //           case WEAPONTYPE_CLEAVER:
+     //           case WEAPONTYPE_MACHETE:
+     //           case WEAPONTYPE_KATANA:
+     //               m_sQueueSample.m_nSampleIndex = SFX_KNIFE_SWING;
+     //               break;
+     //           default:
+     //               m_sQueueSample.m_nSampleIndex = SFX_GOLF_CLUB_SWING;
+     //               break;
+     //           }
+     //           m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+     //           m_sQueueSample.m_nCounter = iSound++;
+     //           narrowSoundRange = TRUE;
+     //           m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(m_sQueueSample.m_nSampleIndex);
+     //           m_sQueueSample.m_nFrequency += RandomDisplacement(m_sQueueSample.m_nFrequency >> 4);
+     //           m_sQueueSample.m_nPriority = 3;
+     //           m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+     //           m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_WEAPON_HIT_PED_MAX_DIST;
+     //           if (weaponType == WEAPONTYPE_UNARMED || weaponType == WEAPONTYPE_BRASSKNUCKLE)
+     //               Vol = m_anRandomTable[1] % 10 + 35;
+     //           else
+     //               Vol = m_anRandomTable[2] % 20 + 70;
+     //           maxDist = SQR(PED_ONE_SHOT_WEAPON_HIT_PED_MAX_DIST);
+     //           m_sQueueSample.m_nLoopCount = 1;
+     //           RESET_LOOP_OFFSETS
+     //               SET_EMITTING_VOLUME(Vol);
+     //           m_sQueueSample.m_bIs2D = FALSE;
+     //           m_sQueueSample.m_bStatic = TRUE;
+     //           SET_SOUND_REFLECTION(TRUE);
+     //           break;
+     //       }
+     //       case SOUND_SKATING:
+     //       {
+     //           uint32 soundParams = m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i];
+     //           uint8 param1 = soundParams & 0xFF;
+     //           uint32 param2 = soundParams >> 8;
+     //           m_sQueueSample.m_nSampleIndex = m_anRandomTable[3] % 2 + SFX_SKATE_1;
+     //           m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+     //           m_sQueueSample.m_nCounter = iSound;
+     //           stereo = TRUE;
+     //           iSound++;
+     //           m_sQueueSample.m_nFrequency = m_anRandomTable[1] % 1000 + 17000;
+     //           if (param2 == 0)
+     //               m_sQueueSample.m_nFrequency = (3 * m_sQueueSample.m_nFrequency) >> 2;
+     //           m_sQueueSample.m_nPriority = 6;
+     //           m_sQueueSample.m_fSpeedMultiplier = 3.0f;
+     //           m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_SKATING_MAX_DIST;
+     //           maxDist = SQR(PED_ONE_SHOT_SKATING_MAX_DIST);
+     //           m_sQueueSample.m_nLoopCount = 1;
+     //           RESET_LOOP_OFFSETS
+     //               Vol = (m_anRandomTable[2] % 20 + PED_ONE_SHOT_SKATING_VOLUME) * param1 / MAX_VOLUME;
+     //           SET_EMITTING_VOLUME(Vol);
+     //           m_sQueueSample.m_bIs2D = FALSE;
+     //           m_sQueueSample.m_bStatic = TRUE;
+     //           SET_SOUND_REFLECTION(TRUE);
+     //           break;
+     //       }
+     //       case SOUND_WEAPON_MINIGUN_ATTACK:
+     //           m_sQueueSample.m_nSampleIndex = SFX_MINIGUN_FIRE_RIGHT;
+     //           m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+     //           m_sQueueSample.m_nCounter = 68;
+     //           m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_MINIGUN_FIRE_RIGHT);
+     //           m_sQueueSample.m_nPriority = 2;
+     //           m_sQueueSample.m_fSpeedMultiplier = 3.0f;
+     //           m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_MINIGUN_MAX_DIST;
+     //           Vol = PED_ONE_SHOT_MINIGUN_VOLUME;
+     //           maxDist = SQR(PED_ONE_SHOT_MINIGUN_MAX_DIST);
+     //           m_sQueueSample.m_nLoopCount = 0;
+     //           SET_LOOP_OFFSETS(SFX_MINIGUN_FIRE_RIGHT)
+     //           SET_EMITTING_VOLUME(PED_ONE_SHOT_MINIGUN_VOLUME);
+     //           m_sQueueSample.m_bIs2D = FALSE;
+     //           m_sQueueSample.m_bStatic = FALSE;
+     //           m_sQueueSample.m_nFramesToPlay = 3;
+     //           break;
+     //       case SOUND_WEAPON_MINIGUN_2:
+     //           m_sQueueSample.m_nSampleIndex = SFX_MINIGUN_FIRE_LEFT;
+     //           m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+     //           m_sQueueSample.m_nCounter = 69;
+     //           m_sQueueSample.m_nFrequency = 18569;
+     //           m_sQueueSample.m_nPriority = 2;
+     //           m_sQueueSample.m_fSpeedMultiplier = 3.0f;
+     //           m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_MINIGUN_MAX_DIST;
+     //           Vol = (float)PED_ONE_SHOT_MINIGUN_VOLUME * m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i];
+     //           maxDist = SQR(PED_ONE_SHOT_MINIGUN_MAX_DIST);
+     //           m_sQueueSample.m_nLoopCount = 0;
+     //           SET_LOOP_OFFSETS(SFX_MINIGUN_FIRE_LEFT)
+     //           SET_EMITTING_VOLUME(Vol);
+     //           m_sQueueSample.m_bIs2D = FALSE;
+     //           m_sQueueSample.m_bStatic = FALSE;
+     //           m_sQueueSample.m_nFramesToPlay = 3;
+     //           break;
+     //       case SOUND_WEAPON_MINIGUN_3:
+     //           m_sQueueSample.m_nSampleIndex = SFX_MINIGUN_STOP;
+     //           m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+     //           m_sQueueSample.m_nCounter = 69;
+     //           m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(SFX_MINIGUN_STOP);
+     //           m_sQueueSample.m_nPriority = 4;
+     //           m_sQueueSample.m_fSpeedMultiplier = 0.0f;
+     //           m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_MINIGUN_MAX_DIST;
+     //           maxDist = SQR(PED_ONE_SHOT_MINIGUN_MAX_DIST);
+     //           m_sQueueSample.m_nLoopCount = 1;
+     //           RESET_LOOP_OFFSETS
+     //           Vol = PED_ONE_SHOT_MINIGUN_VOLUME;
+     //           SET_EMITTING_VOLUME(PED_ONE_SHOT_MINIGUN_VOLUME);
+     //           m_sQueueSample.m_bIs2D = FALSE;
+     //           m_sQueueSample.m_bStatic = TRUE;
+     //           SET_SOUND_REFLECTION(TRUE);
+     //           break;
+     //       case SOUND_SHIRT_WIND_FLAP:
+     //       {
+     //           if (params.m_pPed->IsPlayer() && params.m_pPed->m_pMyVehicle)
+     //           {
+     //               if (m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i] > 0.0f)
+     //               {
+     //                   if (m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i] > 1.0f)
+     //                       m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i] = 1.0f;
+
+     //                   Vol = (float)PED_ONE_SHOT_SHIRT_FLAP_VOLUME * m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_afVolume[i];
+
+     //                   switch (params.m_pPed->m_pMyVehicle->GetModelIndex())
+     //                   {
+     //                   case MI_ANGEL:
+     //                   case MI_FREEWAY:
+     //                       m_sQueueSample.m_nSampleIndex = SFX_CAR_WIND_17;
+     //                       break;
+     //                   case MI_PCJ600:
+     //                       m_sQueueSample.m_nSampleIndex = SFX_CAR_WIND_20;
+     //                       break;
+     //                   case MI_SANCHEZ:
+     //                       m_sQueueSample.m_nSampleIndex = SFX_CAR_WIND_19;
+     //                       break;
+     //                   case MI_PIZZABOY:
+     //                   case MI_FAGGIO:
+     //                       m_sQueueSample.m_nSampleIndex = SFX_CAR_WIND_18;
+     //                       break;
+     //                   default:
+     //                       continue;
+     //                   };
+
+     //                   m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+     //                   m_sQueueSample.m_nCounter = 71;
+     //                   m_sQueueSample.m_nFrequency = SampleManager.GetSampleBaseFrequency(m_sQueueSample.m_nSampleIndex);
+     //                   m_sQueueSample.m_nPriority = 3;
+     //                   m_sQueueSample.m_fSpeedMultiplier = 3.0f;
+     //                   m_sQueueSample.m_MaxDistance = PED_ONE_SHOT_SHIRT_FLAP_MAX_DIST;
+     //                   maxDist = SQR(PED_ONE_SHOT_SHIRT_FLAP_MAX_DIST);
+     //                   m_sQueueSample.m_nLoopCount = 0;
+     //                   SET_LOOP_OFFSETS(m_sQueueSample.m_nSampleIndex)
+     //                       SET_EMITTING_VOLUME(Vol);
+     //                   m_sQueueSample.m_bIs2D = FALSE;
+     //                   m_sQueueSample.m_bStatic = FALSE;
+     //                   m_sQueueSample.m_nFramesToPlay = 3;
+     //               }
+     //           }
+     //           continue;
+     //       }
+     //       default:
+     //           SetupPedComments(params, sound);
+     //           continue;
+        }
+
+        if (narrowSoundRange && iSound > 60)
+            iSound = 21;
+        if (params.m_fDistance < maxDist)
+        {
+            CalculateDistance(params.m_bDistanceCalculated, params.m_fDistance);
+            m_sQueueSample.m_nVolume = ComputeVolume(Vol, m_sQueueSample.m_MaxDistance, m_sQueueSample.m_fDistance);
+            if (m_sQueueSample.m_nVolume > 0)
+            {
+                if (stereo)
+                {
+                    if (m_sQueueSample.m_fDistance < 0.2f * m_sQueueSample.m_MaxDistance)
+                    {
+                        m_sQueueSample.m_bIs2D = TRUE;
+                        m_sQueueSample.m_nPan = 0;
+                    }
+                    else
+                        stereo = FALSE;
+                }
+                SET_SOUND_REVERB(TRUE);
+                AddSampleToRequestedQueue();
+                if (stereo)
+                {
+                    m_sQueueSample.m_nPan = 127;
+                    m_sQueueSample.m_nSampleIndex++;
+                    if (m_asAudioEntities[m_sQueueSample.m_nEntityIndex].m_awAudioEvent[i] == SOUND_WEAPON_SHOT_FIRED &&
+                        ped->m_storedWeapon == WEAPONTYPE_FLAMETHROWER)
+                        m_sQueueSample.m_nCounter++;
+                    else
+                    {
+                        m_sQueueSample.m_nCounter = iSound++;
+                        if (iSound > 60)
+                            iSound = 21;
+                    }
+                    AddSampleToRequestedQueue();
+                }
+            }
+        }
+    }
+}

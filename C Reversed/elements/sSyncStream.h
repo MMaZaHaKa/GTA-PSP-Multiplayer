@@ -70,7 +70,8 @@ public:
 	void ReadVector(CVector& vec);
 	void ReadVector2D(CVector2D& vec2D);
 	void ReadString(base::string& string);
-	void ReadColour(CRGBA& colour);
+	void ReadColour(CRGBA& colour); // 32 RGBA
+	void ReadColour24(CRGBA& colour); // 24 RGB
 	void ReadBool(bool& bVal);
 	void ReadI8(int8& nVal);
 	void ReadU8(uint8& nVal);
@@ -86,7 +87,8 @@ public:
 	CVector ReadVector();
 	CVector2D ReadVector2D();
 	base::string ReadString();
-	CRGBA ReadColour();
+	CRGBA ReadColour(); // 32 RGBA
+	CRGBA ReadColour24(); // 24 RGB
 	bool ReadBool();
 	int8 ReadI8();
 	uint8 ReadU8();
@@ -153,7 +155,8 @@ public:
 	void WriteVector(const CVector& vec);
 	void WriteVector2D(const CVector2D& vec2D);
 	void WriteString(const base::string& string);
-	void WriteColour(const CRGBA& colour);
+	void WriteColour(const CRGBA& colour); // 32 RGBA
+	void WriteColour24(const CRGBA& colour); // 24 RGB
 	void WriteBool(bool bVal);
 	void WriteI8(int8 nVal);
 	void WriteU8(uint8 nVal);

@@ -8,12 +8,14 @@
 
 sRadarBlipSync::sRadarBlipSync() : sElementSync()
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 	memset(&m_nTrace, 0, sizeof(m_nTrace));
 	m_nTrace.m_nPlayerMaskMG = -1;
 }
 
 sRadarBlipSync::sRadarBlipSync(sRadarTrace* blipTrace) : sElementSync()
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 	m_nTrace.m_nColor = blipTrace->m_nColor;
 	m_nTrace.m_eBlipType = blipTrace->m_eBlipType;
 	m_nTrace.m_nEntityHandle = blipTrace->m_nEntityHandle;
@@ -36,6 +38,7 @@ sRadarBlipSync::sRadarBlipSync(sRadarTrace* blipTrace) : sElementSync()
 
 sRadarBlipSync::sRadarBlipSync(const sRadarBlipSync& other) : sElementSync(other)
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 	m_nTrace.m_nColor = other.m_nTrace.m_nColor;
 	m_nTrace.m_eBlipType = other.m_nTrace.m_eBlipType;
 	m_nTrace.m_nEntityHandle = other.m_nTrace.m_nEntityHandle;
@@ -55,7 +58,9 @@ sRadarBlipSync::sRadarBlipSync(const sRadarBlipSync& other) : sElementSync(other
 	m_nTrace.m_nPlayerMaskMG = other.m_nTrace.m_nPlayerMaskMG;
 }
 
-sRadarBlipSync::~sRadarBlipSync() { }
+sRadarBlipSync::~sRadarBlipSync() {
+	DECLARE_SYNC_DESTRUCT(this);
+}
 
 // not checks: bMultiplayerState
 bool sRadarBlipSync::Compare(const sRadarBlipSync& other)
@@ -123,13 +128,17 @@ void sRadarBlipSync::Dump()
 
 
 sRadarBlip::sRadarBlip() {
+	DECLARE_ELEMENT_CONSTRUCT(this, true, false);
 	m_nBlipIndex = -1;
+	DECLARE_ELEMENT_CONSTRUCT(this, false, false);
 }
 
 sRadarBlip::sRadarBlip(int32 nBlipIndex) {
+	DECLARE_ELEMENT_CONSTRUCT(this, true, true);
 	m_nBlipIndex = TheRadar->GetActualBlipArrayIndex(nBlipIndex);
 	RegisterSelf();
 	AttachSync(m_nTime, new sRadarBlipSync(&TheRadar->ms_RadarTrace[m_nBlipIndex]));
+	DECLARE_ELEMENT_CONSTRUCT(this, false, true);
 }
 
 
@@ -149,6 +158,7 @@ bool sRadarBlip::HasCapability(ElementCapability capability)
 
 sRadarBlip::~sRadarBlip()
 {
+	DECLARE_ELEMENT_DESTRUCT(this);
 	ClearBlip();
 
 	sElement::PurgeAttached();
@@ -162,7 +172,8 @@ sElementSync* sRadarBlip::CreateSync()
 
 void sRadarBlip::DisposeSync(sElementSync* pSync)
 {
-	delete (sRadarBlipSync*)pSync;
+	if(pSync)
+		delete ((sRadarBlipSync*)pSync);
 }
 
 sElementSync* sRadarBlip::CreateSyncFromOther(sElementSync* pSync)
@@ -178,13 +189,13 @@ bool sRadarBlip::HasSyncChanged(sElementSync* pSyncA, sElementSync* pSyncB)
 	return syncA.Compare(syncB);
 }
 
-void sRadarBlip::ApplyClientSync(uint16 time)
+void sRadarBlip::ApplyClientSync(uint16 nTime)
 {
-	sElement::ApplyClientSync(time);
+	sElement::ApplyClientSync(nTime);
 	if (cMultiGame::Instance().IsElementOwnerLocalPlayer(this))
 		return;
 
-	sRadarBlipSync* pSync = FindSync(time, nil).radarblip;
+	sRadarBlipSync* pSync = FindSync(nTime, nil).radarblip;
 	if (pSync->m_nTrace.bInUse)
 	{
 		if (m_nBlipIndex == -1)
@@ -220,9 +231,9 @@ void sRadarBlip::ApplyClientSync(uint16 time)
 		ClearBlip();
 }
 
-void sRadarBlip::Update(uint16 time)
+void sRadarBlip::Update(uint16 nTime)
 {
-	AttachSync(time, new sRadarBlipSync(&TheRadar->ms_RadarTrace[m_nBlipIndex]));
+	AttachSync(nTime, new sRadarBlipSync(&TheRadar->ms_RadarTrace[m_nBlipIndex]));
 }
 
 bool sRadarBlip::WriteSyncToStream(sWriteSyncStream* pSyncStream, uint16 nSyncWriteTime, uint16 nSyncLastTime)

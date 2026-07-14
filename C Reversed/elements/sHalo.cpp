@@ -25,7 +25,7 @@ void sHaloElement::Update()
 {
 	if (m_fMarkerSize > 0.0f) {
 		C3dMarkers::PlaceMarker((uint32)this, MARKERTYPE_CYLINDER, m_vecPos, m_fMarkerSize * 0.7f,
-			m_Colour.red, m_Colour.green, m_Colour.blue, 150, 128, 0.0f, 1, 100.0f, 0, nil);
+			m_Colour.red, m_Colour.green, m_Colour.blue, 150, 128, 0.0f, 1, 100.0f, true, false, nil);
 	}
 }
 

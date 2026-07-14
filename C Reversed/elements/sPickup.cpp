@@ -21,6 +21,7 @@
 
 sPickupSync::sPickupSync() : sElementSync()
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 	m_vecPos = CVector(0.0f, 0.0f, 0.0f);
 #if defined(GTA_LIBERTY) && !defined(FIX_BUGS)
 	m_bRemoved = false;
@@ -32,6 +33,7 @@ sPickupSync::sPickupSync() : sElementSync()
 
 sPickupSync::sPickupSync(CPickup* pSrc) : sElementSync()
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 	m_vecPos = pSrc->m_vecPos;
 	m_bRemoved = pSrc->m_bRemoved;
 	m_nPickupBy = (int8)pSrc->m_nNetPickedUpBy;
@@ -40,12 +42,15 @@ sPickupSync::sPickupSync(CPickup* pSrc) : sElementSync()
 // inlined
 sPickupSync::sPickupSync(const sPickupSync& other) : sElementSync(other)
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 	m_vecPos = other.m_vecPos;
 	m_bRemoved = other.m_bRemoved;
 	m_nPickupBy = other.m_nPickupBy;
 }
 
-sPickupSync::~sPickupSync() { }
+sPickupSync::~sPickupSync() {
+	DECLARE_SYNC_DESTRUCT(this);
+}
 
 // not checks: m_nPickupBy
 bool sPickupSync::Compare(const sPickupSync& other)
@@ -73,20 +78,23 @@ void sPickupSync::Dump()
 
 
 sPickup::sPickup() {
+	DECLARE_ELEMENT_CONSTRUCT(this, true, false);
 	m_nPickHandle = -1;
 	m_bPickupedUp = false;
-	m_nTimeUnk = 0;
-	m_nTime = 0;
+	m_nExpireTime = 0;
+	m_nEventTime = 0;
 #ifdef FIX_BUGS
 	m_nPickupBy = -1;
 #endif
+	DECLARE_ELEMENT_CONSTRUCT(this, false, false);
 }
 
 sPickup::sPickup(int32 handle) {
+	DECLARE_ELEMENT_CONSTRUCT(this, true, true);
 	m_nPickHandle = handle;
 	m_bPickupedUp = false;
-	m_nTimeUnk = 0;
-	m_nTime = 0;
+	m_nExpireTime = 0;
+	m_nEventTime = 0;
 	RegisterSelf();
 	CPickup& pick = CPickups::aPickUps[CPickups::GetActualPickupIndex(m_nPickHandle)];
 	pick.m_pNetworkElem = this;
@@ -97,6 +105,7 @@ sPickup::sPickup(int32 handle) {
 #ifdef FIX_BUGS
 	m_nPickupBy = -1;
 #endif
+	DECLARE_ELEMENT_CONSTRUCT(this, false, true);
 }
 
 
@@ -115,6 +124,7 @@ bool sPickup::HasCapability(ElementCapability capability)
 }
 
 sPickup::~sPickup() {
+	DECLARE_ELEMENT_DESTRUCT(this);
 	if (m_nPickHandle != -1)
 		CPickups::RemovePickUp(m_nPickHandle);
 
@@ -127,7 +137,8 @@ sElementSync* sPickup::CreateSync() {
 }
 
 void sPickup::DisposeSync(sElementSync* pSync) {
-	delete (sPickupSync*)pSync;
+	if(pSync)
+		delete ((sPickupSync*)pSync);
 }
 
 sElementSync* sPickup::CreateSyncFromOther(sElementSync* pSync)
@@ -143,9 +154,9 @@ bool sPickup::HasSyncChanged(sElementSync* pSyncA, sElementSync* pSyncB)
 	return syncA.Compare(syncB);
 }
 
-void sPickup::ApplyClientSync(uint16 time) {
-	sElement::ApplyClientSync(time);
-	sPickupSync* pSync = FindSync(time, nil).pickup;
+void sPickup::ApplyClientSync(uint16 nTime) {
+	sElement::ApplyClientSync(nTime);
+	sPickupSync* pSync = FindSync(nTime, nil).pickup;
 	if (m_nPickHandle == -1) {
 		m_nPickHandle = CPickups::GenerateNewOne(pSync->GetPosition(), m_eModelIndex, m_eType, m_nQuantity, 0, false);
 	}
@@ -184,13 +195,13 @@ ePowerupType inline GetPowerUpType(CPickup& pick) {
 	return ePowerupType::POWERUP_NONE;
 }
 
-void sPickup::Update(uint16 time) {
+void sPickup::Update(uint16 nTime) {
 	cMultiGame& Game = cMultiGame::Instance();
 	CPickup& pick = CPickups::aPickUps[CPickups::GetActualPickupIndex(m_nPickHandle)];
 
-	if (m_bPickupedUp) debug("%d %d\n", time, m_nTimeUnk);
-	if (m_bPickupedUp && ((time - m_nTimeUnk) >= 0)) {
-		debug("PICKED UP %i:%i by(%d)\n", m_nOwnerID, m_nID, m_nPickupBy);
+	if (m_bPickupedUp) debug("%d %d\n", nTime, m_nExpireTime);
+	if (m_bPickupedUp && ((nTime - m_nExpireTime) >= 0)) {
+		debug("PICKED UP %i:%i by(%d)\n", GetOwner(), GetID(), m_nPickupBy);
 		m_bPickupedUp = false;
 		debug("Setting picked up to FALSE (2)\n");
 		if (pick.m_bRemoved == false) {
@@ -206,17 +217,17 @@ void sPickup::Update(uint16 time) {
 				Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
 				pick.m_nNetPickedUpBy = m_nPickupBy;
 #ifdef GTA_LIBERTY
-	#ifdef FIX_BUGS
-				pick.PickupTheDamnPickup(nil, nil, -1, m_nPickupBy);
-	#else
+	//#ifdef FIX_BUGS // recheck
+	//			pick.PickupTheDamnPickup(nil, nil, -1, m_nPickupBy);
+	//#else
 				pick.PickupTheDamnPickup(nil, nil, -1, 100); // bug?
-	#endif
+	//#endif
 #else
-	#ifdef FIX_BUGS
-				pick.PickupTheDamnPickup(nil, nil, -1, m_nPickupBy, -1);
-	#else
+	//#ifdef FIX_BUGS // recheck
+	//			pick.PickupTheDamnPickup(nil, nil, -1, m_nPickupBy, -1);
+	//#else
 				pick.PickupTheDamnPickup(nil, nil, -1, 100, -1); // bug?
-	#endif
+	//#endif
 #endif
 			}
 			else {
@@ -248,7 +259,7 @@ void sPickup::Update(uint16 time) {
 			}
 		}
 	}
-	AttachSync(time, new sPickupSync(&pick));
+	AttachSync(nTime, new sPickupSync(&pick));
 }
 
 bool sPickup::WriteSyncToStream(sWriteSyncStream* pSyncStream, uint16 nSyncWriteTime, uint16 nSyncLastTime)
@@ -293,7 +304,7 @@ void sPickup::RequestCollect(uint16 time, int32 who)
 	}
 
 	cMultiGame& Game = cMultiGame::Instance();
-	if (m_nOwnerID != Game.LocalPlayerID())
+	if (GetOwner() != Game.LocalPlayerID())
 	{
 		if (m_bPickupedUp)
 			debug("Is NOT locally owned and is has already been picked up\n");
@@ -302,26 +313,30 @@ void sPickup::RequestCollect(uint16 time, int32 who)
 			debug("Setting picked up to TRUE (1)\n");
 			m_bPickupedUp = true;
 			m_nPickupBy = who;
-			debug("~~~~ sMessagePickupRequest Sent Id %d Owner %d\n", m_nID, m_nOwnerID);
+			debug("~~~~ sMessagePickupRequest Sent Id %d Owner %d\n", GetID(), GetOwner());
 			net::pckt_pickup_request packet{};
 			packet.pckt_size = sizeof(net::pckt_pickup_request);
 			packet.pckt_id = gtMP_PacketIDs.pickup_request.pckt_id;
-			packet.elem = m_nID;
-			Game.SendMessagePriority(packet, m_nOwnerID);
+			packet.elem = GetID();
+			Game.SendMessagePriority(packet, GetOwner());
 		}
 	}
 	else
 	{
-		if (m_bPickupedUp && (time - m_nTime) < 0)
+		if (m_bPickupedUp && (time - m_nEventTime) < 0)
 		{
 			debug("~~~~ No bloody idea what's happening here...\n");
-			m_nTime = time;
-			m_nOwnerID = who;
+			m_nEventTime = time;
+			SetOwner(who);
 		}
 		else if (!m_bPickupedUp)
 		{
 			float fMaxTime = 0.0f;
+#ifdef GTA_LIBERTY
 			for (int32 nPlayerID = 0; nPlayerID < Game.m_pNetSession->m_vPeers.size(); nPlayerID++)
+#else
+			for (int32 nPlayerID = 0; nPlayerID < PeerManager.m_vPlayers.size(); nPlayerID++)
+#endif
 			{
 				sPlayer* pPlayer = Game.GetPlayer(nPlayerID);
 				if (pPlayer == nil) continue;
@@ -335,8 +350,8 @@ void sPickup::RequestCollect(uint16 time, int32 who)
 			}
 			sPeerState* requester_peer = PeerManager.GetPeerById(who);
 			float fSelfTime = requester_peer->m_bufferIndex ? requester_peer->m_latencySum / requester_peer->m_bufferIndex : 0.0f;
-			m_nTimeUnk = (time - fSelfTime) + fMaxTime;
-			m_nTime = time;
+			m_nExpireTime = (time - fSelfTime) + fMaxTime;
+			m_nEventTime = time;
 			m_nPickupBy = who;
 			m_bPickupedUp = true;
 			debug("~~~~ Picked up set to true\n");
@@ -414,7 +429,7 @@ void sPickup::PerformWriteSync(sWriteSyncStream* pSyncStream, sPickupSync* pSync
 		pSyncStream->WriteI8(pSync->m_nPickupBy);
 }
 
-void mp_pickup_send_on_collected(sElement* elem) {
+void mg_pickup_send_on_collected(sElement* elem) {
 	net::pckt_pickup_collected packet{};
 	packet.pckt_size = sizeof(net::pckt_pickup_collected);
 	packet.pckt_id = gtMP_PacketIDs.pickup_collected.pckt_id;

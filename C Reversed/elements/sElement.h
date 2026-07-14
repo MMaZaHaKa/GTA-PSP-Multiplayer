@@ -10,6 +10,14 @@
 #include "multiplayer/InterestZone.h"
 #include "multiplayer/net/public.h" // hash
 
+#define BLOCK_SIZE_START(fieldStart, type) (offsetof(type, fieldStart))
+#define BLOCK_SIZE_END(fieldStart, type) (sizeof(type) - BLOCK_SIZE_START(fieldStart, type))
+//#define PTR_BLOCK_SIZE_END(pStart, pField, type) (sizeof(type) - (((uint8*)pField) - ((uint8*)pStart)))
+
+#define DECLARE_ELEMENT_CONSTRUCT(element, lt, from)
+#define DECLARE_ELEMENT_DESTRUCT(element)
+#define DECLARE_SYNC_CONSTRUCT(sync)
+#define DECLARE_SYNC_DESTRUCT(sync)
 
 enum class eElementType { // https://prnt.sc/jO0XbAwdsaIk
 	ELEMENT_TYPE_PLAYER = 0,
@@ -27,11 +35,25 @@ enum class eElementType { // https://prnt.sc/jO0XbAwdsaIk
 	ELEMENT_TYPE_QUADBIKE,
 	ELEMENT_TYPE_NETMETER2D,
 #endif
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 	ELEMENT_TYPE_OBJECT,
 #endif
 	NUM_ELEMENT_TYPES
 };
+
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+enum eElementSyncType {
+	SYNC_TYPE_NONE = 0,
+	SYNC_TYPE_RAW_TIME_EQ,
+	SYNC_TYPE_INTERP_TIME_EQ,
+	SYNC_TYPE_INTERP_NEW,
+	SYNC_TYPE_EXTERP_NEW,
+	SYNC_TYPE_FRONT_FALLBACK,
+	SYNC_TYPE_EMPTY_FALLBACK
+};
+
+extern const char* GetSyncTypeName(eElementSyncType type);
+#endif
 
 
 // forward decl
@@ -66,7 +88,7 @@ struct sQuadBikeSync;   // 11 S
 struct sNetMeter2d;     // 12
 struct sNetMeter2dSync; // 12 S
 #endif
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 struct sObject;     // 13
 struct sObjectSync; // 13 S
 #endif
@@ -102,7 +124,7 @@ union uElement
 	sQuadBike* quadbike;
 	sNetMeter2d* netmeter;
 #endif
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 	sObject* object;
 #endif
 	sElement* element;
@@ -132,7 +154,7 @@ union uElementSync
 	sQuadBikeSync* quadbike;
 	sNetMeter2dSync* netmeter;
 #endif
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 	sObjectSync* object;
 #endif
 	sElementSync* element;
@@ -167,6 +189,9 @@ struct sElementSync {
 #if !defined(FINAL) && !defined(MASTER)
 	void Dump() { debug("=== sElementSync Dump ===\nm_bUnk: %d\n", m_bUnk); }
 #endif
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
+	virtual eElementType GetType() = 0;
+#endif
 };
 
 using ElementCapability = void* (*)(void);
@@ -180,7 +205,7 @@ public:
 	{
 		struct
 		{
-			uint8 bPhyUnk_1 : 1; // (xref:  CPhysical::SendMuliVehicleCollision)
+			uint8 bSendedCollision : 1; // (xref:  CPhysical::SendMuliVehicleCollision)
 			uint8 b0_2 : 1; // xref: cMultiGame::SendTransferEntityMsg ????
 			uint8 b0_4 : 1;
 			uint8 b0_8 : 1;
@@ -196,17 +221,28 @@ public:
 	int8 m_nPrevOwnerID; // i8 in ctor -1, m_nOwnerID i8?
 	uint8 m_nOwnerID;
 	bool m_bIsNewSync;
-	//int8 m_pad0;
+	int8 field_5; // pad
 	int16 m_nPrevID; // i16 in ctor -1, m_nID i16?
 	uint16 m_nID;
 	uint16 m_nTime;
 	uint16 m_nDeltaTime;
 	uint16 m_nLastSentFrame;
-	std::deque<tSyncEntry> m_vSync;
-	std::deque<tSyncEntry> m_vSyncB;
+	std::deque<tSyncEntry> m_vSync;  // m_vRawStates
+	std::deque<tSyncEntry> m_vSyncB; // m_vInterpolatedStates
 	uElementSync m_pSync;
 	cInterestZone* m_pZone;
-	CEntity* m_pEntity; // from who created (CPed, CAutomobile, etc), native gta entity
+	CEntity* m_pEntity; // from who created (CPed, CAutomobile, etc), native gta entity, what we synced
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+	eElementSyncType m_nSyncType;
+	uint8 bSendedCreation : 1; // 1st full sync, assert in delta, make shure we sended creation flag
+	uint8 bCurrSend : 1; // in send now
+	uint8 bCurrRecv : 1; // in recv now
+#endif
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
+	uint8 bVanilaCompatible : 1; // skip element send, skip header + unknown elem type for vanila
+	uint8 bCurrDestPeerVanilaDevice : 1; // set before calc delta, reset after send, custom delta skip
+	uint8 bReceivedEntity : 1;
+#endif
 
 	sElement();
 
@@ -221,8 +257,8 @@ public:
 	virtual sElementSync* CreateSyncFromOther(sElementSync* pSync) = 0; // vcs vft : 6 __purecall // old CopyInfo, CopySync, CreateSyncFromOther
 	virtual bool HasSyncChanged(sElementSync* pSyncA, sElementSync* pSyncB) = 0; // vcs vft : 7 __purecall // old IsSyncEqual, CompareSync, because it doesn't check all sync fields
 	virtual eElementType GetType() = 0; // vcs vft : 8 __purecall
-	virtual void ApplyClientSync(uint16 time); // vcs vft: 9 // old OnClientCreate
-	virtual void Update(uint16 time); // vcs vft: 10 // from sElement::FindSync
+	virtual void ApplyClientSync(uint16 nTime); // vcs vft: 9 // old OnClientCreate
+	virtual void Update(uint16 nTime); // vcs vft: 10 // from sElement::FindSync
 	virtual bool WriteSyncToStream(sWriteSyncStream* pSyncStream, uint16 nSyncWriteTime, uint16 nSyncLastTime) = 0; // vcs vft: 11 __purecall // time can be -1 (0 - 1)
 	virtual void ReadSyncFromStream(sReadSyncStream* pSyncStream, sElementSync* pOutSync) = 0; // vcs vft: 12 __purecall
 	virtual void ReceiveEntity(uint8 nOwner, uint16 nID, uint16 nTime); // vcs vft: 13 // CreateFromSync, ReceiveEntity, OnReceiveTransfer, mk vehice, ped etc
@@ -237,7 +273,11 @@ public:
 	void PurgeAttached(); // TODO: its in scalar double vft, recheck impl
 
 	void AttachSync(uint16 nTime, sElementSync* pSync);
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+	uElementSync FindSync(uint16 nTime, bool* bIsNewSync, eElementSyncType* foundType = nil); // get or create
+#else
 	uElementSync FindSync(uint16 nTime, bool* bIsNewSync); // get or create
+#endif
 	uElementSync GetSyncWithTime(uint16 nTime);
 	void RegisterZone(cInterestZone* pZone);
 	sPlayer* GetOwnerPlayer();
@@ -248,21 +288,33 @@ public:
 	void DisposeFrame(uint16 nTime);
 
 	inline bool WasTransfered(void) { return m_bWasTransfered; }
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+	inline uElementSync GetSync() {
+		if (m_pSync.element == nil)
+			m_pSync = FindSync(m_nTime, &m_bIsNewSync, &m_nSyncType);
+		return m_pSync;
+	}
+#else
 	inline uElementSync GetSync() {
 		if (m_pSync.element == nil) {
-			bool bIsNewSync = false;
+			bool bIsNewSync = false; // useless
 			m_pSync = FindSync(m_nTime, &bIsNewSync);
 			m_bIsNewSync = bIsNewSync;
 		}
 		return m_pSync;
 	}
+#endif
 	inline uint16 GetOwner() { return m_nOwnerID; };
 	inline void SetOwner(uint16 owner) { m_nOwnerID = owner; };
 	inline uint16 GetID() { return m_nID; };
 	inline void SetID(uint16 id) { m_nID = id; }
+
+	// Get/Set invisible native gta entity for mp sync (CEntity)
 	inline CEntity* GetEntity() { return m_pEntity; };
 	inline void SetEntity(CEntity* pEntity) { m_pEntity = pEntity; };
+
 	/*inline*/ sPeerState* GetPeer(); // custom
+	/*inline*/ const char* GetOwnerNickname(); // custom
 	/*inline*/ uint32 GetSyncCount(bool owned); // custom
 
 	inline tSyncEntry* FindSyncEntry(sElementSync* pSync, bool* bFromMainBuffer = nil) {

@@ -8,6 +8,21 @@
 #include "multiplayer/elements/sElement.h"
 #include "multiplayer/MultiGame.h"
 
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+const char* GetSyncTypeName(eElementSyncType type) {
+	static const char* gSzSyncTypes[7] = {
+	"SYNC_TYPE_NONE",
+	"SYNC_TYPE_RAW_TIME_EQ",
+	"SYNC_TYPE_INTERP_TIME_EQ",
+	"SYNC_TYPE_INTERP_NEW",
+	"SYNC_TYPE_EXTERP_NEW",
+	"SYNC_TYPE_FRONT_FALLBACK",
+	"SYNC_TYPE_EMPTY_FALLBACK"
+	};
+	return gSzSyncTypes[type];
+}
+#endif
+
 sElement::sElement() {
 	cMultiGame& Game = cMultiGame::Instance();
 	m_bWasTransfered = false;
@@ -26,6 +41,16 @@ sElement::sElement() {
 	SetEntity(nil);
 	if (Game.IsOpen())
 		m_nLastSentFrame = Game.m_pNetSession->m_nCurTime;
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+	m_nSyncType = eElementSyncType::SYNC_TYPE_NONE;
+	bSendedCreation = false;
+	assert(gAllowCreateElement); // lifetime assert for m_nLastSentFrame
+#endif
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
+	bVanilaCompatible = true; // false - not send to vanila peer
+	bCurrDestPeerVanilaDevice = false;
+	bReceivedEntity = false;
+#endif
 }
 
 ElementCapability sElement::GetCapability()
@@ -58,17 +83,25 @@ sElement::~sElement()
 	Game.RemoveElement(this);
 	if (m_pZone && m_nOwnerID == Game.LocalPlayerID())
 		m_pZone->RemoveElement(this);
-	if (GetEntity() != nil) {
+	if (GetEntity() != nil) { // delete native, kek
+#ifdef GTA_LIBERTY
 		CWorld::Remove(GetEntity());
+#else
+		CWorld::Remove(GetEntity(), WORLD_REMOVE_WITH_CLEANUP_VEHICLES);
+#endif
 		delete m_pEntity; // warn! vanila delete CWorld::Players[index].m_pPed
 #ifdef FIX_BUGS
 		SetEntity(nil);
 #endif
 	}
+
+	// probably autogen inlined dtors
+	m_vSync.clear();
+	m_vSyncB.clear();
 }
 
-void sElement::ApplyClientSync(uint16 time) {
-	m_nTime = time;
+void sElement::ApplyClientSync(uint16 nTime) {
+	m_nTime = nTime;
 
 	uint16 lagAdjustedTime = m_nTime - static_cast<uint16>(TheMPGame.m_nLagValue);
 
@@ -82,12 +115,12 @@ void sElement::ApplyClientSync(uint16 time) {
 	}
 
 	bool isNewSync = false;
-	m_pSync = FindSync(time, &isNewSync);
+	m_pSync = FindSync(nTime, &isNewSync);
 	m_bIsNewSync = isNewSync;
 }
 
-void sElement::Update(uint16 time) {
-	AttachSync(time, CreateSyncFromOther(FindSync(time, nil).element));
+void sElement::Update(uint16 nTime) {
+	AttachSync(nTime, CreateSyncFromOther(FindSync(nTime, nil).element));
 }
 
 void sElement::ReceiveEntity(uint8 nOwner, uint16 nID, uint16 nTime) {
@@ -98,6 +131,10 @@ void sElement::ReceiveEntity(uint8 nOwner, uint16 nID, uint16 nTime) {
 	m_nID = nID;
 	m_nTime = nTime;
 	m_nDeltaTime = nTime;
+
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
+	bReceivedEntity = true;
+#endif
 
 	PurgeAttached();
 }
@@ -122,12 +159,18 @@ void sElement::TransferEntity(int16 nDestPlayer) {
 
 void sElement::RegisterSelf() {
 	cMultiGame::Instance().RegisterEntity(this);
+#ifdef DEBUG_MULTIGAME
+	//debug("Registered element %d %s ID %d (0x%X) OWNER %d (0x%X)\n", GetType(), GetElementStringType(this), GetID(), GetID(), GetOwner(), GetOwner());
+#endif
 }
 
 void sElement::RegisterSelfWithOwner(uint8 nOwner, uint16 nID) {
 	m_nOwnerID = nOwner;
 	m_nID = nID;
 	cMultiGame::Instance().RegisterEntity(this);
+#ifdef DEBUG_MULTIGAME
+	//debug("Registered custom id element %d %s ID %d (0x%X) OWNER %d (0x%X)\n", GetType(), GetElementStringType(this), GetID(), GetID(), GetOwner(), GetOwner());
+#endif
 }
 
 void sElement::AttachSync(uint16 time, sElementSync* pSync) {
@@ -140,58 +183,104 @@ void sElement::AttachSync(uint16 time, sElementSync* pSync) {
 	}
 }
 
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+uElementSync sElement::FindSync(uint16 time, bool* bIsNewSync, eElementSyncType* foundType) {
+#else
 uElementSync sElement::FindSync(uint16 time, bool* bIsNewSync) {
-	auto lb_it = m_vSyncB.begin();
-	for (; lb_it != m_vSyncB.end(); ++lb_it) {
-		if (static_cast<int16>(lb_it->m_nTime - time) >= 0)
-			break;
+#endif
+	//if (m_vSync.size()) return m_vSync[m_vSync.size() - 1].m_pAttachedElement; // tmp
+
+	// m_vSyncB lower_bound: backward from end (optimization)
+	auto lb_it = m_vSyncB.end();
+	if (!m_vSyncB.empty()) {
+		for (auto it = std::prev(m_vSyncB.end()); ; --it) {
+			if (static_cast<int16>(it->m_nTime - time) < 0) {
+				lb_it = std::next(it);
+				break;
+			}
+			if (it == m_vSyncB.begin()) {
+				lb_it = m_vSyncB.begin();
+				break;
+			}
+		}
 	}
+
 	if (lb_it != m_vSyncB.end() && lb_it->m_nTime == time) {
 		if (bIsNewSync) *bIsNewSync = true;
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+		if (foundType) *foundType = SYNC_TYPE_INTERP_TIME_EQ;
+#endif
 		return lb_it->m_pAttachedElement;
 	}
 
+	// m_vSync upper_bound: forward
 	auto upper_it = m_vSync.begin();
 	for (; upper_it != m_vSync.end(); ++upper_it) {
-		if (static_cast<int16>(upper_it->m_nTime - time) < 0)
+		if (static_cast<int16>(upper_it->m_nTime - time) > 0)
 			break;
 	}
 
 	if (upper_it == m_vSync.begin()) {
 		if (m_vSync.empty()) {
 			if (bIsNewSync) *bIsNewSync = true;
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+			if (foundType) *foundType = SYNC_TYPE_EMPTY_FALLBACK;
+#endif
 			return { nil };
 		}
 		if (bIsNewSync) *bIsNewSync = false;
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+		if (foundType) *foundType = SYNC_TYPE_FRONT_FALLBACK;
+#endif
 		return m_vSync.front().m_pAttachedElement;
 	}
 
-	auto prev_it = upper_it - 1;
+	auto prev_it = std::prev(upper_it);
 	uint16 prev_time = prev_it->m_nTime;
 	uElementSync prev_sync = prev_it->m_pAttachedElement;
-
 	if (prev_time == time) {
 		if (bIsNewSync) *bIsNewSync = false;
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+		if (foundType) *foundType = SYNC_TYPE_RAW_TIME_EQ;
+#endif
 		return prev_sync;
 	}
 
+	// create new sync
 	uElementSync new_sync;
 	new_sync.element = CreateSyncFromOther(prev_sync.element);
-
 	m_vSyncB.insert(lb_it, { time, new_sync });
 
-	int16 delta = static_cast<int16>(time - prev_time);
-	if (delta > 0)
-		UpdateDelta(new_sync.element, delta);
+	uint16 nTimeB; // unused?
+	int16 nDeltaTime = 0;
+	bool is_extrapolate = (upper_it == m_vSync.end());
+	if (!is_extrapolate) {
+		nTimeB = prev_time;
+	}
+	else {
+		nTimeB = m_nDeltaTime;
+		nDeltaTime = static_cast<int16>(m_nDeltaTime - prev_time);
+	}
 
-	if (upper_it != m_vSync.end()) {
+	int16 delta = static_cast<int16>(time - prev_time);
+	if (nDeltaTime != 0)
+		UpdateDelta(new_sync.element, nDeltaTime);
+
+	if (!is_extrapolate) {
 		uint16 next_time = upper_it->m_nTime;
 		uElementSync next_sync = upper_it->m_pAttachedElement;
 		float factor = static_cast<float>(delta) / static_cast<float>(next_time - prev_time);
 		InterpolateDeltaState(new_sync.element, next_sync.element, factor);
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+		if (foundType) *foundType = SYNC_TYPE_INTERP_NEW;
+#endif
 	}
-	else if (delta > 0)
+	else if (delta > 0) {
 		ApplyDeltaState(new_sync.element, delta);
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+		if (foundType) *foundType = SYNC_TYPE_EXTERP_NEW;
+#endif
+	}
 
 	if (bIsNewSync) *bIsNewSync = true;
 	return new_sync;
@@ -202,7 +291,7 @@ uElementSync sElement::GetSyncWithTime(uint16 time) {
 		if (entry.m_nTime == time)
 			return entry.m_pAttachedElement;
 	}
-	assert(false && "syn not found");
+	assert(false && "sync not found");
 	return { nil };
 }
 
@@ -274,10 +363,9 @@ uElementSync sElement::GetSyncWithTime2(uint16 nState, uint16 nBasis) {
 	DisposeAttachedDelta(nState, nBasis);
 
 	uElementSync new_sync;
-	uint16 insert_time;
+	uint16 insert_time = nState;
 	if (nBasis >= nState) {
 		new_sync.element = CreateSync();
-		insert_time = nState;
 	}
 	else // nState > nBasis
 	{
@@ -299,7 +387,6 @@ uElementSync sElement::GetSyncWithTime2(uint16 nState, uint16 nBasis) {
 		new_sync.element = CreateSyncFromOther(it->m_pAttachedElement.element);
 		uint16 found_time = it->m_nTime;
 		UpdateDelta(new_sync.element, nState - found_time);
-		insert_time = nState;
 	}
 
 	tSyncEntry new_entry{ insert_time, new_sync };
@@ -308,7 +395,7 @@ uElementSync sElement::GetSyncWithTime2(uint16 nState, uint16 nBasis) {
 			return a.m_nTime < b.m_nTime;
 		});
 	m_vSync.insert(insert_pos, new_entry);
-	bPhyUnk_1 = false;
+	bSendedCollision = false;
 	return new_sync;
 }
 
@@ -332,10 +419,14 @@ void sElement::DisposeFrame(uint16 nTime) {
 
 sPeerState* sElement::GetPeer() {
 #ifdef GTA_LIBERTY
-	TODO(); // from m_vPlayers multigame
+	TODO(); // from m_vPlayers multigame (FindPlayerPeerMG)
 #else
 	return PeerManager.GetPeerById(GetOwner()); 
 #endif
+}
+
+const char* sElement::GetOwnerNickname() {
+	return cMultiGame::Instance().GetPlayerName(GetOwner());
 }
 
 uint32 sElement::GetSyncCount(bool owned) {

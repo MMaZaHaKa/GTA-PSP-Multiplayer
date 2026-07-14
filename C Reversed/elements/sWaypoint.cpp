@@ -56,22 +56,21 @@ bool sWaypointElement::Update(sWaypoint* pWaypoint) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sPlayer* pPlayer = Game.GetPlayer(MP_HOST_INDEX); // Local player
 	sPed* pPed = (sPed*)Game.GetEntityForHandle(pPlayer->GetOwner(), eElementID::MG_ELEMENT_PLAYER_PED_ID); // GetPlayerPed()
-	if (!pPed) return false;
 
 	if (m_fMarkerSize > 0.0f)
 	{
 		switch (m_nType)
 		{
-			case WAYPOINT_TYPE_0:
+			case WAYPOINT_LAND:
 			{
 				C3dMarkers::PlaceMarker(m_nID, MARKERTYPE_CYLINDER, m_vecPos, m_fMarkerSize * 0.7f, 
-					m_Colour.red, m_Colour.green, m_Colour.blue, m_Colour.alpha, 128, 0.0f, 1, 100.0f, 0, nil);
+					m_Colour.red, m_Colour.green, m_Colour.blue, m_Colour.alpha, 128, 0.0f, 1, 100.0f, true, false, nil);
 				break;
 			}
-			case WAYPOINT_TYPE_1:
+			case WAYPOINT_AIR:
 			{
 				C3dMarkers::PlaceMarker(m_nID, MARKERTYPE_RACE_RING, m_vecPos, 6.0f,
-					m_Colour.red, m_Colour.green, m_Colour.blue, 100, 1, 1.0f, 0, 0.0f, 0, nil);
+					m_Colour.red, m_Colour.green, m_Colour.blue, 100, 1, 1.0f, 0, 0.0f, false, false, &m_vecLookAt);
 				break;
 			}
 			default:
@@ -85,7 +84,7 @@ bool sWaypointElement::Update(sWaypoint* pWaypoint) {
 			CVector pos = m_vecPos;
 			pos.z = m_fArrowHeight;
 			C3dMarkers::PlaceMarker(m_nID + 2, MARKERTYPE_RACE_ARROW, pos, 3.2f,
-				m_Colour.red, m_Colour.green, m_Colour.blue, m_Colour.alpha, 1, 1.0f, 1, 0.0f, 0, nil);
+				m_Colour.red, m_Colour.green, m_Colour.blue, m_Colour.alpha, 1, 1.0f, 1, 0.0f, true, false, &m_vecLookAt);
 		}
 	}
 
@@ -98,7 +97,7 @@ bool sWaypointElement::Update(sWaypoint* pWaypoint) {
 		}
 		else
 		{
-			net::pckt_hit_waypoint packet;
+			net::pckt_hit_waypoint packet{};
 			packet.pckt_size = sizeof(net::pckt_hit_waypoint);
 			packet.pckt_id = gtMP_PacketIDs.hit_waypoint.pckt_id;
 			packet.nWaypointID = m_nID;
@@ -112,7 +111,7 @@ bool sWaypointElement::Update(sWaypoint* pWaypoint) {
 
 sWaypoint::sWaypoint() {
 	m_nCount = 0;
-	m_RbWaypointTree = std::map<uint16, std::pair<int, bool>>();
+	m_RbWaypointTree = std::map<uint16, std::pair<int32, bool>>();
 	m_WaypointElements = std::vector<sWaypointElement*>();
 	m_bRaceArrowVisible = true;
 }
@@ -146,7 +145,7 @@ void sWaypoint::Remove(uint16 nWaypointID) {
 			Clear(owner, nWaypointID);
 		}
 		else {
-			net::pckt_clear_waypoint packet;
+			net::pckt_clear_waypoint packet{};
 			packet.pckt_size = sizeof(net::pckt_clear_waypoint);
 			packet.pckt_id = gtMP_PacketIDs.clear_waypoint.pckt_id;
 			packet.nWaypointID = nWaypointID;

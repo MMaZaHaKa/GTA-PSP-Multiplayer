@@ -21,6 +21,7 @@
 
 sPlayerSync::sPlayerSync() : sElementSync()
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 #ifdef FIX_BUGS // recheck
 	m_vPos = CVector(0.0f, 0.0f, 0.0f);
 	m_nKeyPresses = 0;
@@ -36,6 +37,7 @@ sPlayerSync::sPlayerSync() : sElementSync()
 sPlayerSync::sPlayerSync(CVector vPos, uint8 nKeyPresses, CVector vCamFront, CVector vCamSource,
 	CVector vCamUp, uint8 nPickups, int8 eWBState, float fCamFov) : sElementSync()
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 	m_vPos = vPos;
 	m_nKeyPresses = nKeyPresses;
 	m_vCamFront = vCamFront;
@@ -49,6 +51,7 @@ sPlayerSync::sPlayerSync(CVector vPos, uint8 nKeyPresses, CVector vCamFront, CVe
 // inlined, with copy sElementSync.unk1 = pSync->sElementSync.unk1
 sPlayerSync::sPlayerSync(const sPlayerSync& other) : sElementSync(other)
 {
+	DECLARE_SYNC_CONSTRUCT(this);
 	m_vPos = other.m_vPos;
 	m_nKeyPresses = other.m_nKeyPresses;
 	m_vCamFront = other.m_vCamFront;
@@ -59,7 +62,9 @@ sPlayerSync::sPlayerSync(const sPlayerSync& other) : sElementSync(other)
 	m_nPickups = other.m_nPickups;
 }
 
-sPlayerSync::~sPlayerSync() { }
+sPlayerSync::~sPlayerSync() {
+	DECLARE_SYNC_DESTRUCT(this);
+}
 
 // inlined // not checks: m_fCamFov, m_eWBState, m_nPickups
 bool sPlayerSync::Compare(const sPlayerSync& other)
@@ -98,6 +103,7 @@ void sPlayerSync::Dump()
 
 
 sPlayer::sPlayer() {
+	DECLARE_ELEMENT_CONSTRUCT(this, true, false);
 	m_nBlipIndex = -1;
 #ifdef FIX_BUGS
 	m_fCamCosHFOV = 0.0f;
@@ -105,6 +111,7 @@ sPlayer::sPlayer() {
 	m_fCamCosHFOVAspect = 0.0f;
 	m_fCamSinHFOVAspect = 0.0f;
 #endif
+	DECLARE_ELEMENT_CONSTRUCT(this, false, false);
 }
 
 
@@ -123,6 +130,7 @@ bool sPlayer::HasCapability(ElementCapability capability)
 }
 
 sPlayer::~sPlayer() {
+	DECLARE_ELEMENT_DESTRUCT(this);
 	if (m_nBlipIndex != -1)
 		TheRadar->ClearBlip(m_nBlipIndex);
 	OnPlayerDelete();
@@ -136,7 +144,8 @@ sElementSync* sPlayer::CreateSync() {
 }
 
 void sPlayer::DisposeSync(sElementSync* pSync) {
-	delete (sPlayerSync*)pSync;
+	if(pSync)
+		delete ((sPlayerSync*)pSync);
 }
 
 sElementSync* sPlayer::CreateSyncFromOther(sElementSync* pSync)
@@ -152,18 +161,18 @@ bool sPlayer::HasSyncChanged(sElementSync* pSyncA, sElementSync* pSyncB)
 	return syncA.Compare(syncB);
 }
 
-void sPlayer::ApplyClientSync(uint16 time) {
-	sElement::ApplyClientSync(time);
+void sPlayer::ApplyClientSync(uint16 nTime) {
+	sElement::ApplyClientSync(nTime);
 
-	m_nMatrix.GetRight() = CrossProduct(FindSync(time, nil).player->m_vCamFront, FindSync(time, nil).player->m_vCamUp);
-	m_nMatrix.GetForward() = FindSync(time, nil).player->m_vCamFront;
-	m_nMatrix.GetUp() = FindSync(time, nil).player->m_vCamUp;
-	m_nMatrix.GetPosition() = FindSync(time, nil).player->m_vCamSource;
+	m_nMatrix.GetRight() = CrossProduct(FindSync(nTime, nil).player->m_vCamFront, FindSync(nTime, nil).player->m_vCamUp);
+	m_nMatrix.GetForward() = FindSync(nTime, nil).player->m_vCamFront;
+	m_nMatrix.GetUp() = FindSync(nTime, nil).player->m_vCamUp;
+	m_nMatrix.GetPosition() = FindSync(nTime, nil).player->m_vCamSource;
 
 	// CCamera::CalculateDerivedValues()
 	CMatrix cameraMatrix = Invert(m_nMatrix);
 	m_nMatrix = cameraMatrix;
-	float hfov = DEGTORAD(FindSync(time, nil).player->m_fCamFov) / 2.0f;
+	float hfov = DEGTORAD(FindSync(nTime, nil).player->m_fCamFov) / 2.0f;
 	float c = cosf(hfov);
 	float s = sinf(hfov);
 	m_fCamCosHFOV = c;
@@ -175,7 +184,7 @@ void sPlayer::ApplyClientSync(uint16 time) {
 	m_fCamSinHFOVAspect = s;
 }
 
-void sPlayer::Update(uint16 time) {
+void sPlayer::Update(uint16 nTime) {
 	CPlayerInfo& pInfo = CWorld::Players[CWorld::PlayerInFocus];
 	uint8 nKeyPresses = 0;
 	CPad* pPad = CPad::GetPad(0);
@@ -189,7 +198,7 @@ void sPlayer::Update(uint16 time) {
 		nKeyPresses |= ePlayerPressKey::LOOK_RIGHT;
 	CCam& pCam = TheCamera.Cams[TheCamera.ActiveCam];
 	uint8 nPickups = *FindPlayerPed()->GetPickupsBeingCarried();
-	AttachSync(time, new sPlayerSync(pInfo.GetPos(), nKeyPresses, pCam.Front, pCam.Source, pCam.Up, nPickups, pInfo.m_WBState, CDraw::GetFOV()));
+	AttachSync(nTime, new sPlayerSync(pInfo.GetPos(), nKeyPresses, pCam.Front, pCam.Source, pCam.Up, nPickups, pInfo.m_WBState, CDraw::GetFOV()));
 }
 
 bool sPlayer::WriteSyncToStream(sWriteSyncStream* pSyncStream, uint16 nSyncWriteTime, uint16 nSyncLastTime)
@@ -199,12 +208,12 @@ bool sPlayer::WriteSyncToStream(sWriteSyncStream* pSyncStream, uint16 nSyncWrite
 		return WriteSyncDelta(pSyncStream, pSync, GetSyncWithTime(nSyncLastTime).player);
 	}
 
-//#ifdef FIX_BUGS // can't apply fix bugs read more than send ppsspp
-//	PerformWriteSync(pSyncStream, pSync, ePlayerSync::MP_PKTD_PLR_FULL);
-//#else
+#ifdef FIX_BUGS
+	PerformWriteSync(pSyncStream, pSync, ePlayerSync::MP_PKTD_PLR_FULL);
+#else
 	// missed MP_PKTD_PLR_PICK MP_PKTD_PLR_STAT (bit 8, 9)
-	PerformWriteSync(pSyncStream, pSync, 0xFF); // max diff // bug? 255, 0xFF, not 0xFFFF
-//#endif
+	PerformWriteSync(pSyncStream, pSync, 0xFF); // max diff // bug 255, 0xFF, not 0xFFFF
+#endif
 	return true;
 }
 
@@ -349,6 +358,7 @@ sPlayer* sPlayer::GetLockOnTarget()
 
 inline uint16 sPlayer::CompareSyncState(sPlayerSync* pSync, sPlayerSync* pLastSync)
 {
+	// maybe smth for FLT_EPS_NOT_EQ?
 	const float POSITION_THRESHOLD = 0.5f;
 	const float CAM_DIR_THRESHOLD_SQR = SQR(0.05f);
 	const float CAM_POS_THRESHOLD_SQR = SQR(0.2f);

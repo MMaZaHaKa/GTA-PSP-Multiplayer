@@ -56,6 +56,10 @@ public:
 #if !defined(FINAL) && !defined(MASTER)
 	void Dump();
 #endif
+
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
+	eElementType GetType() override { return eElementType::ELEMENT_TYPE_PLAYER; }
+#endif
 };
 
 struct sPlayer : sElement {
@@ -81,8 +85,8 @@ public:
 	sElementSync* CreateSyncFromOther(sElementSync* pSync) override;
 	bool HasSyncChanged(sElementSync* pSyncA, sElementSync* pSyncB) override;
 	eElementType GetType() override { return eElementType::ELEMENT_TYPE_PLAYER; }
-	void ApplyClientSync(uint16 time) override;
-	void Update(uint16 time) override;
+	void ApplyClientSync(uint16 nTime) override;
+	void Update(uint16 nTime) override;
 	bool WriteSyncToStream(sWriteSyncStream* pSyncStream, uint16 nSyncWriteTime, uint16 nSyncLastTime) override;
 	void ReadSyncFromStream(sReadSyncStream* pSyncStream, sElementSync* pOutSync) override;
 	void RegisterSelfWithOwner(uint8 owner, uint16 id) override;

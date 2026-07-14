@@ -81,7 +81,7 @@ void sElementPhysicalSync::Dump()
 	printf("Turn Friction:  (%.3f, %.3f, %.3f)\n", m_vecTurnFriction.x, m_vecTurnFriction.y, m_vecTurnFriction.z);
 	printf("Phys LVCS Flags B: 0x%02X\n", m_nPhys_lvcs_unk_flagsB);
 	printf("  b154_1:     %d\n", b154_1);
-	printf("  bHasBlip:   %d\n", bHasBlip);
+	printf("  bHasBlipPhys:%d\n", bHasBlipPhys);
 	printf("  b154_4:     %d\n", b154_4);
 	printf("  bNoRadarForEnemy:%d\n", bNoRadarForEnemy);
 	printf("  b154_10:    %d\n", b154_10);
@@ -93,14 +93,30 @@ void sElementPhysicalSync::Dump()
 #endif
 
 
-cPhysicalMG::cPhysicalMG(sElement* elem) {
+cPhysicalMG::cPhysicalMG(sElement* elem) : CPhysical() {
 	m_pElem.element = elem;
 	m_type = eEntityType::ENTITY_TYPE_MULTIPLAYER;
 	bInfiniteMass = true;
 	m_phy_flagA08 = true;
 	bUsesCollision = true;
 	AddToMovingList();
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
+	bIsObject = false;
+#endif
 }
+
+//#ifdef FIX_BUGS
+//cPhysicalMG::cPhysicalMG(CPhysical* pPhysical) {
+//	m_type = eEntityType::ENTITY_TYPE_MULTIPLAYER;
+//	//bUsesCollision = true;
+//
+//	SetMatrix(pPhysical->GetMatrix());
+//	SetMoveSpeed(pPhysical->m_vecMoveSpeed);
+//	m_vecTurnSpeed = pPhysical->m_vecTurnSpeed;
+//	m_vecMoveFriction = pPhysical->m_vecMoveFriction;
+//	m_vecTurnFriction = pPhysical->m_vecTurnFriction;
+//}
+//#endif
 
 cPhysicalMG::~cPhysicalMG() {
 	TheRadar->RemoveMultiplayerMarker(GetElement().element->GetOwner(), GetElement().element->GetID());
@@ -136,7 +152,7 @@ int32 cPhysicalMG::ProcessEntityCollision(CEntity* ent, CColPoint* colpoints) {
 }
 
 
-sElementPhysical::sElementPhysical() {
+sElementPhysical::sElementPhysical() : sElement() {
 	m_pPhyElem = nil;
 	m_bWasPhyTransfered = false;
 #ifndef GTA_LIBERTY
@@ -161,22 +177,22 @@ bool sElementPhysical::HasCapability(ElementCapability capability)
 
 sElementPhysical::~sElementPhysical() {
 	if (m_pPhyElem) {
-		CWorld::Remove(m_pPhyElem);
+		CWorld::Remove(m_pPhyElem, eWorldRemoveType::WORLD_REMOVE_WITH_CLEANUP_VEHICLES);
 		m_pPhyElem->RemoveFromMovingList();
 		delete m_pPhyElem;
 #ifdef FIX_BUGS
-		m_pPhyElem = nil;
+		SetPhysical(nil);
 #endif
 	}
 }
 
-void sElementPhysical::ApplyClientSync(uint16 time)
+void sElementPhysical::ApplyClientSync(uint16 nTime)
 {
-	sElement::ApplyClientSync(time);
+	sElement::ApplyClientSync(nTime);
 	sElementPhysicalSync* pSync = GetSync().elementphysical;
 
 	assert(GetPhysical());
-	if (!cMultiGame::Instance().IsElementOwnerLocalPlayer(this) && GetPhysical()->m_entryInfoList.first) // IsMultiplayerPointerValid check?
+	if ((!cMultiGame::Instance().IsElementOwnerLocalPlayer(this)) && GetPhysical()->m_entryInfoList.first) // IsMultiplayerPointerValid check?
 	{
 		CVector vZero = CVector(0.0f, 0.0f, 0.0f);
 		GetPhysical()->SetMoveSpeed(vZero);
@@ -270,7 +286,8 @@ void sElementPhysical::TransferPhysicalEntity() {
 
 
 uint8 sElementPhysical::CompareSyncState(sElementPhysicalSync* pSync, sElementPhysicalSync* pLastSync) {
-	const float MATRIX_THRESHOLD_SQR = SQR(0.01f); // 0.0001
+	// maybe smth for FLT_EPS_NOT_EQ?
+	const float MATRIX_THRESHOLD_SQR = SQR(0.01f); // 0.0001f
 	const float POSITION_THRESHOLD_SQR = 0.001f;
 	const float SPEED_THRESHOLD_SQR = 0.00001f;
 
@@ -390,18 +407,16 @@ void sElementPhysical::ReadSyncFromStreamPhysical(sReadSyncStream* pSyncStream, 
 	}
 
 	if (nDiffMask & ePhysicalSync::MP_PKTD_PHY_FLAGS) {
-		sync.SetFlags(pSyncStream->ReadU8());
+		uint8 flagsB = pSyncStream->ReadU8();
+		assert(GetPhysical());
+		GetPhysical()->m_nPhys_lvcs_unk_flagsB = flagsB;
+		GetPhysical()->b4E_8 = false;
 
-		if (GetPhysical())
-		{
-			GetPhysical()->m_nPhys_lvcs_unk_flagsB = sync.GetFlags();
-			GetPhysical()->b4E_8 = false;
-
-			if (GetOwner() == TheMPGame.LocalPlayerID()) {
-				assert(GetEntity());
-				((CPhysical*)GetEntity())->m_nPhys_lvcs_unk_flagsB = sync.GetFlags();
-			}
+		if (GetOwner() == cMultiGame::Instance().LocalPlayerID()) {
+			assert(GetEntity());
+			((CPhysical*)GetEntity())->m_nPhys_lvcs_unk_flagsB = flagsB;
 		}
+		sync.SetFlags(flagsB);
 	}
 }
 

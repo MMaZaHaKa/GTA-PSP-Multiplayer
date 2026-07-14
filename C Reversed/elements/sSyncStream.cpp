@@ -54,6 +54,15 @@ void sReadSyncStream::ReadColour(CRGBA& colour) {
     ReadU8(colour.alpha);
 }
 
+void sReadSyncStream::ReadColour24(CRGBA& colour) {
+    SYNC_STREAM_CAN_READ(sizeof(3));
+    LOG_READ_POINTER(sizeof(3));
+    ReadU8(colour.red);
+    ReadU8(colour.green);
+    ReadU8(colour.blue);
+    //colour.alpha = 0;
+}
+
 void sReadSyncStream::ReadBool(bool& bVal) {
     //SYNC_STREAM_CAN_READ(sizeof(bool)); // ps2 bool 4b
     //LOG_READ_POINTER(sizeof(bool)); // ps2 bool 4b
@@ -188,6 +197,12 @@ base::string sReadSyncStream::ReadString() {
 CRGBA sReadSyncStream::ReadColour() {
     CRGBA c;
     ReadColour(c);
+    return c;
+}
+
+CRGBA sReadSyncStream::ReadColour24() {
+    CRGBA c;
+    ReadColour24(c);
     return c;
 }
 
@@ -513,6 +528,14 @@ void sWriteSyncStream::WriteColour(const CRGBA& colour) {
     WriteU8(colour.green);
     WriteU8(colour.blue);
     WriteU8(colour.alpha);
+}
+
+void sWriteSyncStream::WriteColour24(const CRGBA& colour) {
+    SYNC_STREAM_CAN_WRITE(3);
+    LOG_WRITE_POINTER(3);
+    WriteU8(colour.red);
+    WriteU8(colour.green);
+    WriteU8(colour.blue);
 }
 
 void sWriteSyncStream::WriteBool(bool bVal) {

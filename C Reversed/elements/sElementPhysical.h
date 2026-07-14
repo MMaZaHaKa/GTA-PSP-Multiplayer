@@ -38,7 +38,7 @@ private:
 		struct
 		{
 			uint8 b154_1 : 1;
-			uint8 bHasBlip : 1;
+			uint8 bHasBlipPhys : 1;
 			uint8 b154_4 : 1;
 			uint8 bNoRadarForEnemy : 1;
 			uint8 b154_10 : 1;
@@ -86,6 +86,9 @@ public:
 class cPhysicalMG : public CPhysical {
 public:
 	uElement m_pElem;
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
+	bool bIsObject;
+#endif
 
 
 	cPhysicalMG(sElement* elem);
@@ -104,8 +107,10 @@ public:
 	* in other words, this forces the programmer either to use CPools or other allocation
 	* strategy.
 	*/
-	void* operator new(size_t sz) throw() { return malloc(sz); }
-	void operator delete(void* p, size_t sz) throw() { free(p); }
+	void* operator new(size_t size) { return base::cMainMemoryManager::Instance()->Allocate(size); }
+	void operator delete(void* buf) noexcept { base::cMainMemoryManager::Instance()->Free(buf); }
+	//void* operator new(size_t sz) throw() { return malloc(sz); }
+	//void operator delete(void* p, size_t sz) throw() { free(p); }
 };
 
 struct sElementPhysical : sElement {
@@ -127,7 +132,7 @@ public:
 	ElementCapability GetCapability() override;
 	bool HasCapability(ElementCapability capability) override;
 	~sElementPhysical() override;
-	void ApplyClientSync(uint16 time) override;
+	void ApplyClientSync(uint16 nTime) override;
 	void ReceiveEntity(uint8 nOwner, uint16 nID, uint16 nTime) override;
 	void ApplyDeltaState(sElementSync* pSync, uint16 nTimeDelta) override;
 	void InterpolateDeltaState(sElementSync* pSyncA, sElementSync* pSyncB, float fDelta) override;
@@ -142,6 +147,7 @@ public:
 	void AddAckPeerID(uint32 nPeerID);
 	void TransferZone();
 
+	// Get/Set visible Multiplayer entity (cPhysicalMG)
 	inline cPhysicalMG* GetPhysical() { return m_pPhyElem; }
 	inline void SetPhysical(cPhysicalMG* pPhyElem) { m_pPhyElem = pPhyElem; };
 };

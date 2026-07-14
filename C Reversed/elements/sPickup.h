@@ -57,6 +57,9 @@ public:
 #endif
 
 	inline CVector& GetPosition() { return m_vecPos; }
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
+	eElementType GetType() override { return eElementType::ELEMENT_TYPE_PICKUP; }
+#endif
 };
 
 struct sPickup : sElement {
@@ -67,8 +70,8 @@ private:
 	int16 m_eModelIndex;
 	bool m_bPickupedUp;
 	//int8 m_nPad0;
-	uint16 m_nTimeUnk;
-	uint16 m_nTime;
+	uint16 m_nExpireTime;
+	uint16 m_nEventTime;
 	//int8 m_nPad1[2];
 	int32 m_nPickupBy;
 public:
@@ -86,8 +89,8 @@ public:
 	sElementSync* CreateSyncFromOther(sElementSync* pSync) override;
 	bool HasSyncChanged(sElementSync* pSyncA, sElementSync* pSyncB) override;
 	eElementType GetType() override { return eElementType::ELEMENT_TYPE_PICKUP; }
-	void ApplyClientSync(uint16 time) override;
-	void Update(uint16 time) override;
+	void ApplyClientSync(uint16 nTime) override;
+	void Update(uint16 nTime) override;
 	bool WriteSyncToStream(sWriteSyncStream* pSyncStream, uint16 nSyncWriteTime, uint16 nSyncLastTime) override;
 	void ReadSyncFromStream(sReadSyncStream* pSyncStream, sElementSync* pOutSync) override;
 
@@ -104,4 +107,4 @@ public:
 	void PerformWriteSync(sWriteSyncStream* pSyncStream, sPickupSync* pSync, uint8 nDiffMask);
 };
 
-void mp_pickup_send_on_collected(sElement* elem);
+void mg_pickup_send_on_collected(sElement* elem);
