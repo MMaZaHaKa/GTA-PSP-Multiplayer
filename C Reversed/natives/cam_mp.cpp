@@ -18,7 +18,7 @@ int mp_lsn_CameraFadeIn(lua_State* L) {
 		CRGBA color = CRGBA_UNPACK(lsc_getColor(L, 2));
 		TheCamera.SetFadeColour(color.red, color.green, color.blue);
 	}
-	TheCamera.Fade(1, fTimeout);
+	TheCamera.Fade(fTimeout, FADE_IN);
 	TheCamera.ProcessFade();
 	return 0;
 }
@@ -29,21 +29,18 @@ int mp_lsn_CameraFadeOut(lua_State* L) {
 		CRGBA color = CRGBA_UNPACK(lsc_getColor(L, 2));
 		TheCamera.SetFadeColour(color.red, color.green, color.blue);
 	}
-	TheCamera.Fade(0, fTimeout);
+	TheCamera.Fade(fTimeout, FADE_OUT);
 	TheCamera.ProcessFade();
 	return 0;
 }
 
 int mp_lsn_IsCameraFading(lua_State* L) {
-	// TODO: reLVCS missing implementation for CCamera::GetFadingStatusForScript
-	//lua_pushboolean(L, TheCamera.GetFadingStatusForScript());
-	TODO();
-	lsn_none(L);
+	lua_pushboolean(L, TheCamera.GetFadingStatusForScript());
 	return 1;
 }
 
 int mp_lsn_SetFixedCamera(lua_State* L) {
-	int nParams = lua_gettop(L);
+	int32 nParams = lua_gettop(L);
 	CVector pos, target;
 	lsc_getVectorFromStack(pos, L, 1, true);
 	lsc_getVectorFromStack(target, L, 2, true);
@@ -53,16 +50,21 @@ int mp_lsn_SetFixedCamera(lua_State* L) {
 	packet.pos = pos;
 	packet.target = target;
 	if (nParams >= 3) {
-		int nDestPlayerId = lsc_getPlayer(L, 3);
-		TheMPGame.SendMessagePriority(packet, nDestPlayerId);
-		return 0;
+		int32 nDestPlayerId = lsc_getPlayer(L, 3);
+		cMultiGame::Instance().SendMessagePriority(packet, nDestPlayerId);
 	}
-	on_recv_set_fixed_camera(packet, 0, 0, false); // bug? true from local game?
+	else {
+		on_recv_set_fixed_camera(packet, 0, 0, false); // bug? true from local game?
+	}
+#ifdef FIX_BUGS
 	return 0;
+#else
+	return 1; // pastebug, nothing pushed
+#endif
 }
 
 int mp_lsn_RestoreCamera(lua_State* L) {
-	int nParams = lua_gettop(L);
+	int32 nParams = lua_gettop(L);
 	bool bJumpcut = lua_tonumber(L, 1) != 0;
 	net::pckt_restore_camera packet;
 	packet.pckt_size = sizeof(net::pckt_restore_camera);
@@ -70,7 +72,7 @@ int mp_lsn_RestoreCamera(lua_State* L) {
 	packet.jumpcut = bJumpcut;
 	//packet.jumpcut = (packet.jumpcut & 0xFE) | bJumpcut;
 	if (nParams >= 2) {
-		int nDestPlayerId = lsc_getPlayer(L, 2);
+		int32 nDestPlayerId = lsc_getPlayer(L, 2);
 		TheMPGame.SendMessagePriority(packet, nDestPlayerId);
 	}
 	on_recv_restore_camera(packet, 0, 0, false); // bug? true?

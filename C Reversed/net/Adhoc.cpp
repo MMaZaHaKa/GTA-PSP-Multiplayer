@@ -361,7 +361,7 @@ tLobbyRemoteInfo* cAdhoc::GetMatchingInfo(int index) // for player use -1 MP_HOS
 	if (index < 0) index = m_nServerPeerID;
 	assert(index > -1);
 	tAdhocMatchingData& data = m_aMatchingInfo[index];
-	if (data.nState) return &data.entry;
+	if (data.nState != eAdhocPeerState::ADHOC_PEER_DISCONNECTED) return &data.entry;
 	return nil;
 }
 
@@ -1261,7 +1261,7 @@ void cAdhoc::OnMatchClient(int matchingid, int event, tMacAddr& macAddr, int opt
 				pMatchingData->nState = eAdhocPeerState::ADHOC_PEER_JOINED;
 				break;
 			}
-			case PSP_ADHOC_MATCHING_EVENT_DISCONNECT:
+			case PSP_ADHOC_MATCHING_EVENT_DISCONNECT: // хостер вышел из лобби
 			{
 				if (slot == m_nServerPeerID)
 					pMatchingData->nState = eAdhocPeerState::ADHOC_PEER_DISCONNECTED;
@@ -1283,7 +1283,7 @@ void cAdhoc::OnMatchClient(int matchingid, int event, tMacAddr& macAddr, int opt
 	}
 }
 
-// Call: when i am in client mode (recv here)
+// When i am hoster, recv here
 void cAdhoc::OnMatchHost(int matchingid, int event, tMacAddr& macAddr, int optlen, void* optdata)
 {
 #if !defined(FINAL) && !defined(MASTER)
@@ -1296,63 +1296,72 @@ void cAdhoc::OnMatchHost(int matchingid, int event, tMacAddr& macAddr, int optle
 		return;
 
 	int32 slot = FindMacAddr(macAddr);
-	if (slot >= 0)
+	if (slot < 0)
+		return;
+
+	tAdhocMatchingData* pMatchingData = &m_aMatchingInfoRecv[slot];
+	switch (event)
 	{
-		tAdhocMatchingData* pMatchingData = &m_aMatchingInfoRecv[slot];
-		switch (event)
+		case PSP_ADHOC_MATCHING_EVENT_JOIN: // кто то зашел в моё лобби
 		{
-			case PSP_ADHOC_MATCHING_EVENT_JOIN:
+			if (IsNextStateNow(&cAdhoc::StateIdle) && GetNumberOfConnectedPlayers() < MP_NUM_PEERS)
 			{
-				if (IsNextStateNow(&cAdhoc::StateIdle) && GetNumberOfConnectedPlayers() < MP_NUM_PEERS)
-				{
-					pMatchingData->addr = macAddr;
-					if (sceNetAdhocMatchingSelectTarget(m_nAdhocMatchingID, macAddr.GetBytesSCE(), 0, 0) >= 0)
-						pMatchingData->nState = eAdhocPeerState::ADHOC_PEER_ACCEPTED;
-				}
-				else
-					sceNetAdhocMatchingCancelTarget(m_nAdhocMatchingID, pMatchingData->addr.GetBytesSCE());
-				break;
+				pMatchingData->addr = macAddr;
+				if (sceNetAdhocMatchingSelectTarget(m_nAdhocMatchingID, macAddr.GetBytesSCE(), 0, 0) >= 0)
+					pMatchingData->nState = eAdhocPeerState::ADHOC_PEER_ACCEPTED;
 			}
-			case PSP_ADHOC_MATCHING_EVENT_LEFT:
-			case PSP_ADHOC_MATCHING_EVENT_CANCEL:
-			{
-				if (pMatchingData->nState == eAdhocPeerState::ADHOC_PEER_ACCEPTED)
-					pMatchingData->nState = eAdhocPeerState::ADHOC_PEER_DISCONNECTED;
-				break;
-			}
-			case PSP_ADHOC_MATCHING_EVENT_COMPLETE:
-			{
-				pMatchingData->nState = eAdhocPeerState::ADHOC_PEER_JOINED;
-				m_pMatchingInfoEntry->m_nPeersConnInfo[slot].macAddr = macAddr;
-				FindAndClearMacAddr(macAddr);
-				static_assert(sizeof(tLobbyRemoteInfo) == 136, "tLobbyRemoteInfo");
-				sceNetAdhocMatchingSetHelloOpt(m_nAdhocMatchingID, sizeof(tLobbyRemoteInfo), m_pMatchingInfoEntry);
-				break;
-			}
-			case PSP_ADHOC_MATCHING_EVENT_TIMEOUT:
-			case PSP_ADHOC_MATCHING_EVENT_DISCONNECT:
-			{
-				if (pMatchingData->nState != eAdhocPeerState::ADHOC_PEER_LEAVING)
-				{
-					if (pMatchingData->nState == eAdhocPeerState::ADHOC_PEER_JOINED) {
-						m_pMatchingInfoEntry->m_nPeersConnInfo[slot].macAddr.InitMacAddr();
-						static_assert(sizeof(tLobbyRemoteInfo) == 136, "tLobbyRemoteInfo");
-						sceNetAdhocMatchingSetHelloOpt(m_nAdhocMatchingID, sizeof(tLobbyRemoteInfo), m_pMatchingInfoEntry);
-					}
-					pMatchingData->nState = eAdhocPeerState::ADHOC_PEER_DISCONNECTED;
-				}
-				break;
-			}
-			case PSP_ADHOC_MATCHING_EVENT_HELLO:
-			case PSP_ADHOC_MATCHING_EVENT_REJECT:
-			case PSP_ADHOC_MATCHING_EVENT_ACCEPT:
-			case PSP_ADHOC_MATCHING_EVENT_ERROR:
-			{
-				break;
-			}
+			else
+				sceNetAdhocMatchingCancelTarget(m_nAdhocMatchingID, pMatchingData->addr.GetBytesSCE());
+			break;
 		}
-		SignalSemaphore();
+		case PSP_ADHOC_MATCHING_EVENT_LEFT: // кто то вышел из моего лобби
+		case PSP_ADHOC_MATCHING_EVENT_CANCEL:
+		{
+			if (pMatchingData->nState == eAdhocPeerState::ADHOC_PEER_ACCEPTED) {
+				pMatchingData->nState = eAdhocPeerState::ADHOC_PEER_DISCONNECTED;
+			}
+			else if (pMatchingData->nState != eAdhocPeerState::ADHOC_PEER_LEAVING) {
+				if (pMatchingData->nState == eAdhocPeerState::ADHOC_PEER_JOINED) {
+					m_pMatchingInfoEntry->m_nPeersConnInfo[slot].macAddr.InitMacAddr();
+					static_assert(sizeof(tLobbyRemoteInfo) == 136, "tLobbyRemoteInfo");
+					sceNetAdhocMatchingSetHelloOpt(m_nAdhocMatchingID, sizeof(tLobbyRemoteInfo), m_pMatchingInfoEntry);
+				}
+				pMatchingData->nState = eAdhocPeerState::ADHOC_PEER_DISCONNECTED;
+			}
+			break;
+		}
+		case PSP_ADHOC_MATCHING_EVENT_COMPLETE:
+		{
+			pMatchingData->nState = eAdhocPeerState::ADHOC_PEER_JOINED;
+			m_pMatchingInfoEntry->m_nPeersConnInfo[slot].macAddr = macAddr;
+			FindAndClearMacAddr(macAddr);
+			static_assert(sizeof(tLobbyRemoteInfo) == 136, "tLobbyRemoteInfo");
+			sceNetAdhocMatchingSetHelloOpt(m_nAdhocMatchingID, sizeof(tLobbyRemoteInfo), m_pMatchingInfoEntry);
+			break;
+		}
+		case PSP_ADHOC_MATCHING_EVENT_TIMEOUT:
+		case PSP_ADHOC_MATCHING_EVENT_DISCONNECT:
+		{
+			if (pMatchingData->nState != eAdhocPeerState::ADHOC_PEER_LEAVING)
+			{
+				if (pMatchingData->nState == eAdhocPeerState::ADHOC_PEER_JOINED) {
+					m_pMatchingInfoEntry->m_nPeersConnInfo[slot].macAddr.InitMacAddr();
+					static_assert(sizeof(tLobbyRemoteInfo) == 136, "tLobbyRemoteInfo");
+					sceNetAdhocMatchingSetHelloOpt(m_nAdhocMatchingID, sizeof(tLobbyRemoteInfo), m_pMatchingInfoEntry);
+				}
+				pMatchingData->nState = eAdhocPeerState::ADHOC_PEER_DISCONNECTED;
+			}
+			break;
+		}
+		case PSP_ADHOC_MATCHING_EVENT_HELLO:
+		case PSP_ADHOC_MATCHING_EVENT_REJECT:
+		case PSP_ADHOC_MATCHING_EVENT_ACCEPT:
+		case PSP_ADHOC_MATCHING_EVENT_ERROR:
+		{
+			break;
+		}
 	}
+	SignalSemaphore();
 }
 
 cAdhoc* cAdhoc::ms_pInstance = nil;

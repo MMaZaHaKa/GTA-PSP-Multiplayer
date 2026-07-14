@@ -15,6 +15,7 @@
 #include "CarCtrl.h"
 #include "Population.h"
 #include "Renderer.h"
+#include "Clock.h"
 #include "Pools.h"
 
 #include "multiplayer/Lobby.h"
@@ -348,75 +349,75 @@ bool IsCarAllowedInMultiplayer(int32 nModelID, bool mode)
 bool isPadUp()
 {
 #ifdef MP_FE_MOUSE_IMPROVEMENTS
-    //if (CPad::GetPad(0)->GetMouseWheelUpJustDown() && !CPad::GetPad(0)->GetLeftShift()) {
+    //if (CPad::GetPad(PAD1)->GetMouseWheelUpJustDown() && !CPad::GetPad(PAD1)->GetLeftShift()) {
     //    FrontEndMenuManager->m_bShowMouse = false;
     //    return true;
     //}
 #endif
-    if (CPad::GetPad(0)->GetCharJustDown('W')) // tmp
+    if (CPad::GetPad(PAD1)->GetCharJustDown('W')) // tmp
         return true;
-    return CPad::GetPad(0)->GetUpJustDown();
+    return CPad::GetPad(PAD1)->GetUpJustDown();
 }
 
 /* TODO#3 - also belongs to CMenuManager */
 bool isPadDown()
 {
 #ifdef MP_FE_MOUSE_IMPROVEMENTS
-    //if (CPad::GetPad(0)->GetMouseWheelDownJustDown() && !CPad::GetPad(0)->GetLeftShift()) {
+    //if (CPad::GetPad(PAD1)->GetMouseWheelDownJustDown() && !CPad::GetPad(PAD1)->GetLeftShift()) {
     //    FrontEndMenuManager->m_bShowMouse = false;
     //    return true;
     //}
 #endif
-    if(CPad::GetPad(0)->GetCharJustDown('S')) // tmp
+    if(CPad::GetPad(PAD1)->GetCharJustDown('S')) // tmp
         return true;
-    return CPad::GetPad(0)->GetDownJustDown();
+    return CPad::GetPad(PAD1)->GetDownJustDown();
 }
 
 /* TODO#3 - also belongs to CMenuManager */
 bool isPadLeft()
 {
 #ifdef MP_FE_MOUSE_IMPROVEMENTS
-    //if (CPad::GetPad(0)->GetMouseWheelDownJustDown() && CPad::GetPad(0)->GetLeftShift())
-    if (CPad::GetPad(0)->GetMouseWheelDownJustDown())
+    //if (CPad::GetPad(PAD1)->GetMouseWheelDownJustDown() && CPad::GetPad(PAD1)->GetLeftShift())
+    if (CPad::GetPad(PAD1)->GetMouseWheelDownJustDown())
     {
         FrontEndMenuManager->m_bShowMouse = false;
         return true;
     }
 #endif
-    if (CPad::GetPad(0)->GetCharJustDown('A')) // tmp
+    if (CPad::GetPad(PAD1)->GetCharJustDown('A')) // tmp
         return true;
-    return CPad::GetPad(0)->GetLeftJustDown();
+    return CPad::GetPad(PAD1)->GetLeftJustDown();
 }
 
 /* TODO#3 - also belongs to CMenuManager */
 bool isPadRight()
 {
 #ifdef MP_FE_MOUSE_IMPROVEMENTS
-    //if (CPad::GetPad(0)->GetMouseWheelUpJustDown() && CPad::GetPad(0)->GetLeftShift())
-    if (CPad::GetPad(0)->GetMouseWheelUpJustDown())
+    //if (CPad::GetPad(PAD1)->GetMouseWheelUpJustDown() && CPad::GetPad(PAD1)->GetLeftShift())
+    if (CPad::GetPad(PAD1)->GetMouseWheelUpJustDown())
     {
         FrontEndMenuManager->m_bShowMouse = false;
         return true;
     }
 #endif
-    if (CPad::GetPad(0)->GetCharJustDown('D')) // tmp
+    if (CPad::GetPad(PAD1)->GetCharJustDown('D')) // tmp
         return true;
-    return CPad::GetPad(0)->GetRightJustDown();
+    return CPad::GetPad(PAD1)->GetRightJustDown();
 }
 
 /* TODO#3 */
 bool isPadConfirm() {
 #ifdef MP_FE_MOUSE_IMPROVEMENTS
     // moved on MP_IS_CLICK_LAST_Y
-    //if (CPad::GetPad(0)->GetLeftMouseJustDown()) // vanila control(allow last selected)//bug, selected row, clicking on a non-row is counted as a click on it
+    //if (CPad::GetPad(PAD1)->GetLeftMouseJustDown()) // vanila control(allow last selected)//bug, selected row, clicking on a non-row is counted as a click on it
     //    return true;
 #endif
-    return CPad::GetPad(0)->GetEnterJustDown();
+    return CPad::GetPad(PAD1)->GetEnterJustDown();
 }
 
 bool isBackDown() {
     // CPad::GuiBackJustUp
-    return CPad::GetPad(0)->GetEscapeJustDown();
+    return CPad::GetPad(PAD1)->GetEscapeJustDown();
 }
 
 void inline handleBtnPressSound(int8 curMenuIndex) {
@@ -1449,13 +1450,9 @@ void cLobby::HandleMainGameState() {
     // 1st seen mp tab (starting mp.. text)
     if (!FrontEndMenuManager->GetHasJoinedNetwork())
     {
-        if (isPadUp()) {
+        if (isPadUp() || isPadDown()) {
             DMAudio.PlayFrontEndSound(SOUND_FRONTEND_ENTER_OR_ADJUST, 0);
-            NextMenuOption(-1, 0, 1);
-        }
-        if (isPadDown()) {
-            DMAudio.PlayFrontEndSound(SOUND_FRONTEND_ENTER_OR_ADJUST, 0);
-            NextMenuOption(1, 0, 1);
+            NextMenuOption(isPadUp() ? -1 : 1, 0, 1);
         }
 
         // first enter in mp tab (shows yes no text)
@@ -1565,25 +1562,26 @@ void cLobby::HandleMainGameState() {
 
 // cLobby::DrawMainGameScreen
 
-// TODO(MP): re-check function, missing implementation
 void cLobby::HandleHostGameState() {
     DONT_OPTIMIZE();
 
-    cMultiGame& pGame = TheMPGame;
+    cMultiGame& Game = TheMPGame;
+    cAdhoc& Adhoc = TheAdhoc;
+
     //FrontEndMenuManager->GetKeyPresses(&nButtons);
 #ifndef GTA_LIBERTY
     NextCutsceneOption(0);
 #endif
-    tLobbyRemoteInfo* pInfo = TheAdhoc.GetMatchingInfo(MP_HOST_INDEX);
+    tLobbyRemoteInfo* pInfo = Adhoc.GetMatchingInfo(MP_HOST_INDEX);
     tLobbyRemoteInfo connInfo{}; // ctor broadcast
     static_assert(sizeof(tLobbyRemoteInfo) == 136, "tLobbyRemoteInfo");
     if (pInfo) {
         memcpy(&connInfo, pInfo, sizeof(tLobbyRemoteInfo));
     }
 
-    TheAdhoc.Update();
+    Adhoc.Update();
 
-    if (!TheAdhoc.IsWifiSwitchOn())
+    if (!Adhoc.IsWifiSwitchOn())
     {
         m_nSocketID_1 = -1;
         m_nSocketID_2 = -1;
@@ -1593,11 +1591,22 @@ void cLobby::HandleHostGameState() {
         return;
     }
 
-    if (isBackDown() || TheAdhoc.IsNextStateNow(&cAdhoc::StateShutdown))
-    {
-        if (TheAdhoc.IsWifiSwitchOn())
+    bool bForceExitToMain = isBackDown() || Adhoc.IsNextStateNow(&cAdhoc::StateShutdown);
+
+    if (!bForceExitToMain) {
+        bool allowSetup = Adhoc.m_bPendingHostStart ||
+            Adhoc.IsNextStateNow(&cAdhoc::StateCancelAllTargetsIfNotJoined) ||
+            Adhoc.IsNextStateNow(&cAdhoc::StateIdle);
+
+        if (!allowSetup) {
+            bForceExitToMain = true;
+        }
+    }
+
+    if (bForceExitToMain) {
+        if (Adhoc.IsWifiSwitchOn())
         {
-            TheAdhoc.CancelMatchingTarget();
+            Adhoc.CancelMatchingTarget();
             if (m_nSocketID_1 >= 0) sceNetAdhocPtpClose(m_nSocketID_1, 0);
             if (m_nSocketID_2 >= 0) sceNetAdhocPtpClose(m_nSocketID_2, 0);
         }
@@ -1606,232 +1615,241 @@ void cLobby::HandleHostGameState() {
         DMAudio.PlayFrontEndSound(SOUND_FRONTEND_BACK, 0);
         SetCurrentFrontendHandler(&cLobby::HandleMainGameState, &cLobby::DrawMainGameScreen);
         m_nSelectedMenuOptionIndex = 0;
+        if (!isBackDown()) {
+            bool isNormalExit = Adhoc.m_bPendingHostStart ||
+                Adhoc.IsNextStateNow(&cAdhoc::StateCancelAllTargetsIfNotJoined) ||
+                Adhoc.IsNextStateNow(&cAdhoc::StateIdle);
+
+            if (!isNormalExit) {
+                FrontEndMenuManager->SetMultiplayerPageError(0, false);
+            }
+        }
         return;
     }
 
-    bool allowSetup = TheAdhoc.m_bPendingHostStart ||
-        TheAdhoc.IsNextStateNow(&cAdhoc::StateCancelAllTargetsIfNotJoined) ||
-        TheAdhoc.IsNextStateNow(&cAdhoc::StateIdle);
-    if (allowSetup && TheAdhoc.GetMatchingInfo(MP_HOST_INDEX))
-    {
-        UpdateClient(&connInfo, true);
-        if (gIsMultiplayerGame) {
+    if (!Adhoc.GetMatchingInfo(MP_HOST_INDEX))
+        return;
+
+    UpdateClient(&connInfo, true);
+    if (gIsMultiplayerGame) {
 #ifdef GTA_PSP
-            sceKernelSysClock clock = sceKernelGetSystemTimeWide();
-            uint32 sec, usec;
-            sceKernelSysClock2USecWide(clock, &sec, &usec);
-            ms_fJoinPrevTime = static_cast<float>(sec) + (usec / 1000000.0f);
+        sceKernelSysClock clock = sceKernelGetSystemTimeWide();
+        uint32 sec, usec;
+        sceKernelSysClock2USecWide(clock, &sec, &usec);
+        ms_fJoinPrevTime = static_cast<float>(sec) + (usec / 1000000.0f);
 #else
-            ms_fJoinPrevTime = mp_time_now_d();
-#endif
-        }
-
-        if (!TheAdhoc.IsHost())
-        {
-#ifdef GTA_PSP
-            sceKernelSysClock clock = sceKernelGetSystemTimeWide();
-            uint32 sec, usec;
-            sceKernelSysClock2USecWide(clock, &sec, &usec);
-            float currentTime = static_cast<float>(sec) + (usec / 1000000.0f);
-#else
-            float currentTime = mp_time_now_d();
-#endif
-
-            if ((currentTime - ms_fJoinPrevTime) >= MAX_LOBBY_WAIT_DELAY)
-            {
-                if (TheAdhoc.IsWifiSwitchOn())
-                {
-                    TheAdhoc.CancelMatchingTarget();
-                    if (m_nSocketID_1 >= 0) sceNetAdhocPtpClose(m_nSocketID_1, 0);
-                    if (m_nSocketID_2 >= 0) sceNetAdhocPtpClose(m_nSocketID_2, 0);
-                }
-                m_nSocketID_2 = -1;
-                m_nSocketID_1 = -1;
-                DMAudio.PlayFrontEndSound(SOUND_FRONTEND_BACK, 0);
-                SetCurrentFrontendHandler(&cLobby::HandleMainGameState, &cLobby::DrawMainGameScreen);
-                m_nSelectedMenuOptionIndex = 0;
-                return;
-            }
-        }
-
-        int8 nOptIndex = 0;
-        eGameType curGameType = pGame.GetGameType();
-        switch (curGameType)
-        {
-            case eGameType::DEATHMATCH:
-                nOptIndex = MGE_MAX_DEATHMATCH_DEFAULT;
-                break;
-            case eGameType::MULTIRACE:
-                nOptIndex = MGE_MAX_MULTIRACE;
-                break;
-            case eGameType::DEFENDTHEBASE:
-                nOptIndex = MGE_MAX_DEFENDTHEBASE;
-                break;
-            case eGameType::CTF:
-                nOptIndex = MGE_MAX_CTF;
-                break;
-            case eGameType::TANK:
-                nOptIndex = MGE_MAX_TANK;
-                break;
-            case eGameType::HITPARADE:
-                nOptIndex = MGE_MAX_HITPARADE;
-                break;
-            case eGameType::SIXTYSECONDS:
-                nOptIndex = MGE_MAX_SIXTYSECONDS;
-                break;
-#ifndef GTA_LIBERTY
-            case eGameType::HUNTERATTACK:
-                nOptIndex = MGE_MAX_HUNTERATTACK;
-                break;
-            case eGameType::FLAGBALL:
-                nOptIndex = MGE_MAX_FLAGBALL;
-                break;
-            case eGameType::VIP:
-                nOptIndex = MGE_MAX_VIP;
-                break;
-#if 0 // beta
-            case eGameType::COLLECTTHEGOLD:
-                nOptIndex = MGE_MAX_COLLECTTHEGOLD;
-                break;
-            case eGameType::COPSANDROBBERS:
-                nOptIndex = MGE_MAX_COPSANDROBBERS;
-                break;
-#endif
-#ifdef MULTIGAME_SCM
-            case eGameType::SCM:
-                nOptIndex = MGE_MAX_SCM;
-                break;
-#endif
-#endif
-            default:
-                break;
-        }
-        if (curGameType == eGameType::DEATHMATCH && GANG_MODE)
-            nOptIndex = nOptIndex + 2; // or nOptIndex = MGE_MAX_DEATHMATCH;
-
-#ifdef MULTIGAME_SCM
-        if (pGame.GetGameType() != eGameType::SCM)
-#endif
-            HandleGangSelection(nOptIndex);
-
-        int8 nCurrentIndex = m_nSelectedMenuOptionIndex;
-        int8 nMaxMenuIndex = nOptIndex + 2; // accounts for reset and start game options
-
-        if (m_nSelectedMenuOptionIndex == nOptIndex && GANG_MODE) // change our gang
-        {
-            if (isPadLeft() || isPadRight()) // button == 0 || button == 1 || isPadLeft || isPadRight ?
-            {
-                //DMAudio.PlayFrontEndSound(SOUND_FRONTEND_ENTER_OR_ADJUST, 0); // real in vcs code
-                TODO();
-                pGame.s_nSelectedTeam = pGame.s_nSelectedTeam == eGameTeam::TEAM_A ? eGameTeam::TEAM_B : eGameTeam::TEAM_A;
-            }
-        }
-
-        // When we client, limit settings row selection
-        if (!TheAdhoc.IsHost())
-        {
-            if (GANG_MODE)
-            {
-                if (isPadUp() || isPadDown())
-                    m_nSelectedMenuOptionIndex = nOptIndex;
-
-#ifndef MP_FE_MOUSE_IMPROVEMENTS // hover sound conflict, allow select but dont change
-                if (m_nSelectedMenuOptionIndex < nOptIndex)
-                    m_nSelectedMenuOptionIndex = nOptIndex;
-                if (nOptIndex < m_nSelectedMenuOptionIndex)
-                    m_nSelectedMenuOptionIndex = nOptIndex;
-#endif
-            }
-            else
-            {
-#ifndef MP_FE_MOUSE_IMPROVEMENTS
-                m_nSelectedMenuOptionIndex = nOptIndex;
-#endif
-            }
-        }
-
-        if (isPadUp())
-        {
-            handleBtnPressSound(nCurrentIndex);
-            nCurrentIndex--;
-            if (nCurrentIndex == -1)
-                nCurrentIndex = nOptIndex + 2;
-        }
-        else if (isPadDown())
-        {
-            handleBtnPressSound(nCurrentIndex);
-            nCurrentIndex++;
-            if (nCurrentIndex > nMaxMenuIndex)
-                nCurrentIndex = 0;
-        }
-
-        if (nMaxMenuIndex < m_nSelectedMenuOptionIndex)
-            m_nSelectedMenuOptionIndex = 0;
-        if (m_nSelectedMenuOptionIndex == -1)
-            m_nSelectedMenuOptionIndex = 0;
-        if (m_nSelectedMenuOptionIndex < 0)
-            m_nSelectedMenuOptionIndex = nMaxMenuIndex;
-        if (TheAdhoc.IsNextStateNow(&cAdhoc::StateInitialise) || TheAdhoc.IsNextStateNow(&cAdhoc::StateConnectLobbyGroup))
-            m_nSelectedMenuOptionIndex = -1;
-
-        if (isPadLeft()) {
-            handleBtnPressSound(nCurrentIndex);
-            HandleLeftRightBtnPress(nCurrentIndex, -1);
-        }
-        else if (isPadRight()) {
-            handleBtnPressSound(nCurrentIndex);
-            HandleLeftRightBtnPress(nCurrentIndex, 1);
-        }
-#ifdef MP_FE_MOUSE_IMPROVEMENTS
-        if (isPadConfirm() || MP_IS_CLICK_LAST_Y())
-#else
-        if (isPadConfirm())
-#endif
-        {
-            if (nMaxMenuIndex - 1 == nCurrentIndex)
-            {
-                InitGameParams(false); // reset to defaults
-#ifdef MP_FE_MOUSE_IMPROVEMENTS
-                handleBtnPressSound(m_nSelectedMenuOptionIndex); // no rst select idx, no sound
-#endif
-            }
-            else if (nMaxMenuIndex == nCurrentIndex) // start game
-            {
-                if (!TheAdhoc.IsNextStateNow(&cAdhoc::StateShutdown) &&
-                    !TheAdhoc.IsNextStateNow(&cAdhoc::StateInitialise) &&
-                    !TheAdhoc.IsNextStateNow(&cAdhoc::StateConnectLobbyGroup))
-                {
-                    uint8 nConnPlayers = TheAdhoc.GetNumberOfConnectedPlayers();
-                    bool bGangsFilledUp = TheAdhoc.GetNumberOfNonEmptyGangs() >= 2;
-                    bool bCanStartGame = (nConnPlayers >= 2) && (GANG_MODE ? bGangsFilledUp : true);
-                    if (gDeveloperFlag || bCanStartGame) {
-                        m_nSelectedMenuOptionIndex = 0;
-                        memset(m_aConnections, 0, sizeof(m_aConnections));
-                        tLobbyRemoteInfo* info = TheAdhoc.GetMatchingInfo(MP_HOST_INDEX);
-                        static_assert(sizeof(tLobbyRemoteInfo) == 136, "tLobbyRemoteInfo");
-                        memcpy(&m_remoteInfo, info, sizeof(tLobbyRemoteInfo));
-                        m_nWaitTime = 0;
-                        SetCurrentFrontendHandler(&cLobby::HandleHostStartGameState, &cLobby::NoDraw);
-                    }
-
-                }
-            } // start game curr row
-        } // confirm
-
-#if !defined(FIX_BUGS) && !defined(GTA_LIBERTY) // huh, moved into NextRaceGameStyle, store score
-        if (pGame.GetGameType() == eGameType::MULTIRACE && pGame.GetCTFScoreLimit() == (int32)eRaceStyle::RACE_QUADATHLON && pGame.GetScoreLimit() != 1)
-        {
-            m_nSavedRaceLapCount = pGame.GetScoreLimit();
-            pGame.SetScoreLimit(1);
-        }
+        ms_fJoinPrevTime = mp_time_now_d();
 #endif
     }
+
+    if (!Adhoc.IsHost())
+    {
+#ifdef GTA_PSP
+        sceKernelSysClock clock = sceKernelGetSystemTimeWide();
+        uint32 sec, usec;
+        sceKernelSysClock2USecWide(clock, &sec, &usec);
+        float currentTime = static_cast<float>(sec) + (usec / 1000000.0f);
+#else
+        float currentTime = mp_time_now_d();
+#endif
+
+        if ((currentTime - ms_fJoinPrevTime) >= MAX_LOBBY_WAIT_DELAY)
+        {
+            if (Adhoc.IsWifiSwitchOn())
+            {
+                Adhoc.CancelMatchingTarget();
+                if (m_nSocketID_1 >= 0) sceNetAdhocPtpClose(m_nSocketID_1, 0);
+                if (m_nSocketID_2 >= 0) sceNetAdhocPtpClose(m_nSocketID_2, 0);
+            }
+            m_nSocketID_2 = -1;
+            m_nSocketID_1 = -1;
+            DMAudio.PlayFrontEndSound(SOUND_FRONTEND_BACK, 0);
+            SetCurrentFrontendHandler(&cLobby::HandleMainGameState, &cLobby::DrawMainGameScreen);
+            m_nSelectedMenuOptionIndex = 0;
+            FrontEndMenuManager->SetMultiplayerPageError(0, false);
+            return;
+        }
+    }
+
+    int8 nOptIndex = 0;
+    eGameType curGameType = Game.GetGameType();
+    switch (curGameType)
+    {
+        case eGameType::DEATHMATCH:
+            nOptIndex = MGE_MAX_DEATHMATCH_DEFAULT;
+            break;
+        case eGameType::MULTIRACE:
+            nOptIndex = MGE_MAX_MULTIRACE;
+            break;
+        case eGameType::DEFENDTHEBASE:
+            nOptIndex = MGE_MAX_DEFENDTHEBASE;
+            break;
+        case eGameType::CTF:
+            nOptIndex = MGE_MAX_CTF;
+            break;
+        case eGameType::TANK:
+            nOptIndex = MGE_MAX_TANK;
+            break;
+        case eGameType::HITPARADE:
+            nOptIndex = MGE_MAX_HITPARADE;
+            break;
+        case eGameType::SIXTYSECONDS:
+            nOptIndex = MGE_MAX_SIXTYSECONDS;
+            break;
+#ifndef GTA_LIBERTY
+        case eGameType::HUNTERATTACK:
+            nOptIndex = MGE_MAX_HUNTERATTACK;
+            break;
+        case eGameType::FLAGBALL:
+            nOptIndex = MGE_MAX_FLAGBALL;
+            break;
+        case eGameType::VIP:
+            nOptIndex = MGE_MAX_VIP;
+            break;
+#if 0 // beta
+        case eGameType::COLLECTTHEGOLD:
+            nOptIndex = MGE_MAX_COLLECTTHEGOLD;
+            break;
+        case eGameType::COPSANDROBBERS:
+            nOptIndex = MGE_MAX_COPSANDROBBERS;
+            break;
+#endif
+#ifdef MULTIGAME_SCM
+        case eGameType::SCM:
+            nOptIndex = MGE_MAX_SCM;
+            break;
+#endif
+#endif
+        default:
+            break;
+    }
+
+    if (curGameType == eGameType::DEATHMATCH && GANG_MODE)
+        nOptIndex = nOptIndex + 2; // or nOptIndex = MGE_MAX_DEATHMATCH;
+
+#ifdef MULTIGAME_SCM
+    if (pGame.GetGameType() != eGameType::SCM)
+#endif
+        HandleGangSelection(nOptIndex);
+
+    int8 nCurrentIndex = m_nSelectedMenuOptionIndex;
+    int8 nMaxMenuIndex = nOptIndex + 2; // accounts for reset and start game options
+
+    if (m_nSelectedMenuOptionIndex == nOptIndex && GANG_MODE) // change our gang
+    {
+        if (isPadLeft() || isPadRight()) // button == 0 || button == 1 || isPadLeft || isPadRight ?
+        {
+            //DMAudio.PlayFrontEndSound(SOUND_FRONTEND_ENTER_OR_ADJUST, 0); // real in vcs code
+            TODO();
+            Game.s_nSelectedTeam = Game.s_nSelectedTeam == eGameTeam::TEAM_A ? eGameTeam::TEAM_B : eGameTeam::TEAM_A;
+        }
+    }
+
+    // When we client, limit settings row selection
+    if (!Adhoc.IsHost())
+    {
+        if (GANG_MODE)
+        {
+            if (isPadUp() || isPadDown())
+                m_nSelectedMenuOptionIndex = nOptIndex;
+
+#ifndef MP_FE_MOUSE_IMPROVEMENTS // hover sound conflict, allow select but dont change
+            if (m_nSelectedMenuOptionIndex < nOptIndex)
+                m_nSelectedMenuOptionIndex = nOptIndex;
+            if (nOptIndex < m_nSelectedMenuOptionIndex)
+                m_nSelectedMenuOptionIndex = nOptIndex;
+#endif
+        }
+        else
+        {
+#ifndef MP_FE_MOUSE_IMPROVEMENTS
+            m_nSelectedMenuOptionIndex = nOptIndex;
+#endif
+        }
+    }
+
+    if (isPadUp())
+    {
+        handleBtnPressSound(nCurrentIndex);
+        nCurrentIndex--;
+        if (nCurrentIndex == -1)
+            nCurrentIndex = nOptIndex + 2;
+    }
+    else if (isPadDown())
+    {
+        handleBtnPressSound(nCurrentIndex);
+        nCurrentIndex++;
+        if (nCurrentIndex > nMaxMenuIndex)
+            nCurrentIndex = 0;
+    }
+
+    if (nMaxMenuIndex < m_nSelectedMenuOptionIndex)
+        m_nSelectedMenuOptionIndex = 0;
+    if (m_nSelectedMenuOptionIndex == -1)
+        m_nSelectedMenuOptionIndex = 0;
+    if (m_nSelectedMenuOptionIndex < 0)
+        m_nSelectedMenuOptionIndex = nMaxMenuIndex;
+    if (Adhoc.IsNextStateNow(&cAdhoc::StateInitialise) || Adhoc.IsNextStateNow(&cAdhoc::StateConnectLobbyGroup))
+        m_nSelectedMenuOptionIndex = -1;
+
+    if (isPadLeft()) {
+        handleBtnPressSound(nCurrentIndex);
+        HandleLeftRightBtnPress(nCurrentIndex, -1);
+    }
+    else if (isPadRight()) {
+        handleBtnPressSound(nCurrentIndex);
+        HandleLeftRightBtnPress(nCurrentIndex, 1);
+    }
+#ifdef MP_FE_MOUSE_IMPROVEMENTS
+    if (isPadConfirm() || MP_IS_CLICK_LAST_Y())
+#else
+    if (isPadConfirm())
+#endif
+    {
+        if (nMaxMenuIndex - 1 == nCurrentIndex)
+        {
+            InitGameParams(false); // reset to defaults
+#ifdef MP_FE_MOUSE_IMPROVEMENTS
+            handleBtnPressSound(m_nSelectedMenuOptionIndex); // no rst select idx, no sound
+#endif
+        }
+        else if (nMaxMenuIndex == nCurrentIndex) // start game
+        {
+            if (!Adhoc.IsNextStateNow(&cAdhoc::StateShutdown) &&
+                !Adhoc.IsNextStateNow(&cAdhoc::StateInitialise) &&
+                !Adhoc.IsNextStateNow(&cAdhoc::StateConnectLobbyGroup))
+            {
+                uint8 nConnPlayers = Adhoc.GetNumberOfConnectedPlayers();
+                bool bGangsFilledUp = Adhoc.GetNumberOfNonEmptyGangs() >= 2;
+                bool bCanStartGame = (nConnPlayers >= 2) && (GANG_MODE ? bGangsFilledUp : true);
+                if (gDeveloperFlag || bCanStartGame) {
+                    m_nSelectedMenuOptionIndex = 0;
+                    memset(m_aConnections, 0, sizeof(m_aConnections));
+                    tLobbyRemoteInfo* info = Adhoc.GetMatchingInfo(MP_HOST_INDEX);
+                    static_assert(sizeof(tLobbyRemoteInfo) == 136, "tLobbyRemoteInfo");
+                    memcpy(&m_remoteInfo, info, sizeof(tLobbyRemoteInfo));
+                    m_nWaitTime = 0;
+                    SetCurrentFrontendHandler(&cLobby::HandleHostStartGameState, &cLobby::NoDraw);
+                }
+
+            }
+        } // start game curr row
+    } // confirm
+
+#if !defined(FIX_BUGS) && !defined(GTA_LIBERTY) // huh, moved into NextRaceGameStyle, store score
+    if (pGame.GetGameType() == eGameType::MULTIRACE && pGame.GetCTFScoreLimit() == (int32)eRaceStyle::RACE_QUADATHLON && pGame.GetScoreLimit() != 1)
+    {
+        m_nSavedRaceLapCount = pGame.GetScoreLimit();
+        pGame.SetScoreLimit(1);
+    }
+#endif
+
 
 #ifndef GTA_LIBERTY
     NextCutsceneOption(0);
 #endif
-    TheAdhoc.UpdateGameParams();
-    tLobbyRemoteInfo* pInfoNew = TheAdhoc.GetMatchingInfo(MP_HOST_INDEX);
+    Adhoc.UpdateGameParams();
+    tLobbyRemoteInfo* pInfoNew = Adhoc.GetMatchingInfo(MP_HOST_INDEX);
     static_assert(sizeof(tLobbyRemoteInfo) == 136, "tLobbyRemoteInfo");
     if (memcmp(&connInfo, pInfoNew, sizeof(tLobbyRemoteInfo)))
         memset(m_aConnections, 0, sizeof(m_aConnections));
@@ -1952,20 +1970,11 @@ void cLobby::HandleJoinGameState() {
         !Adhoc.IsNextStateNow(&cAdhoc::StateInitialise) &&
         !Adhoc.IsNextStateNow(&cAdhoc::StateConnectLobbyGroup);
 
-    if (allowInput)
-    {
-        if (isPadUp())
-        {
+    if (allowInput) {
+        if (isPadUp() || isPadDown()) {
             if (m_nNewHostIdx > 0)
                 DMAudio.PlayFrontEndSound(SOUND_FRONTEND_ENTER_OR_ADJUST, 0);
-            NextMenuOption(-1, 0, m_nNewHostIdx);
-        }
-
-        if (isPadDown())
-        {
-            if (m_nNewHostIdx > 0)
-                DMAudio.PlayFrontEndSound(SOUND_FRONTEND_ENTER_OR_ADJUST, 0);
-            NextMenuOption(1, 0, m_nNewHostIdx);
+            NextMenuOption(isPadUp() ? -1 : 1, 0, m_nNewHostIdx);
         }
     }
 
@@ -1990,8 +1999,8 @@ void cLobby::HandleJoinGameState() {
             m_nSelectedMenuOptionIndex = 0;
         }
         else {
-            int I = 0;
-            for (int index = 0; index < MP_NUM_PEERS; ++index) {
+            int32 I = 0;
+            for (int32 index = 0; index < MP_NUM_MATCHING_GROUPS; ++index) {
                 tLobbyRemoteInfo* pInfo = Adhoc.GetMatchingInfo(index);
                 if (pInfo) {
                     if (I == m_nSelectedMenuOptionIndex) {
@@ -2004,13 +2013,8 @@ void cLobby::HandleJoinGameState() {
         }
     }
     Adhoc.Update();
-    bool bClose = false;
-    if (isBackDown()) {
-        bClose = true;
-    }
-    else if (Adhoc.IsNextStateNow(&cAdhoc::StateShutdown)) {
-        bClose = true;
-    }
+
+    bool bClose = isBackDown() || Adhoc.IsNextStateNow(&cAdhoc::StateShutdown);
     if (bClose) {
         if (Adhoc.IsWifiSwitchOn()) {
             Adhoc.CancelMatchingTarget();
@@ -2231,13 +2235,14 @@ void cLobby::UpdateClient(tLobbyRemoteInfo* pConnInfo, bool bUpdatePeer) {
 void cLobby::LoadMultiplayer() { // start mp game (before ok)
     MARKFUNCTION(0x0, 0x0887C998);
 
-#if (!defined(FINAL) && !defined(MASTER))
+#if 1
     { // dbg
         OpenConsole(); // check the lua logs [print(123)]
-        gDebugDrawStuff = 1; // text
-        gMPDebugPrintLevel = 1; // simsch
-        //gbShowCollisionLines2 = true; // collision
-        gbDrawVersionText = true; // instanse ID
+        //CClock::SetGameClock(3, 0);
+        //gDebugDrawStuff = 1; // text
+        //gMPDebugPrintLevel = 1; // simsch
+        ////gbShowCollisionLines2 = true; // collision
+        //gbDrawVersionText = true; // instanse ID
     }
 #endif
 

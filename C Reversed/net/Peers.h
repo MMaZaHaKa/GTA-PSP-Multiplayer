@@ -11,6 +11,10 @@
 #include "singletonManager.h"
 #include <map>
 
+#ifndef GTA_PSP
+struct SceNetAdhocctlPeerInfo;
+#endif
+
 #ifndef fGTA_LIBERTY
 // forward decl
 struct sElement;
@@ -37,6 +41,10 @@ public:
 	float m_latencyBuffer[PEER_STATE_MAX_BUFFER_SIZE];
 	uint16 m_nTimeA; // m_nCurTime?
 	uint16 m_nTimeB;
+#ifndef GTA_PSP
+	bool bVanilaDevice;
+	SceNetAdhocctlPeerInfo* m_pProAdhocPeer;
+#endif
 	std::map<uint16, sElement*> m_vElements;
 
 	sPeerState(int32 id, tListenAddr& addr);
@@ -47,10 +55,20 @@ public:
 	uint16 PeerLastAck();
 	void UpdateAck();
 
-	inline sElement* FindElement(int id) {
+	inline sElement* FindElement(int32 id) {
 		std::map<uint16, sElement*>::iterator it = m_vElements.find(id);
 		if (it != m_vElements.end()) return it->second;
 		return nil;
+	}
+	inline bool IsElementExists(sElement* pElement) {
+#ifdef FIX_BUGS
+		if (!pElement) return false;
+#endif
+		if (m_vElements.size() == 0) return false;
+		for (std::map<uint16, sElement*>::iterator it = m_vElements.begin(); it != m_vElements.end(); it++) {
+			if (it->second != nil && it->second == pElement) return true;
+		}
+		return false;
 	}
 	inline void UpdateElements(uint16 time) {
 		for (std::map<uint16, sElement*>::iterator it = m_vElements.begin(); it != m_vElements.end(); it++) {
@@ -76,7 +94,7 @@ public:
 
 	AllocFn m_pAllocFunc;
 	FreeFn m_pFreeFunc;
-	std::vector<sPeerState*> m_vPlayers; // simplify
+	std::vector<sPeerState*> m_vPlayers; // all players in game (+ self)
 	int32 m_nTeamAPeerGroupId; // m_nRedTeamPeerGroupId  mp_lsn_GetRedTeamPeerGroupId
 	int32 m_nTeamBPeerGroupId; // m_nBlueTeamPeerGroupId mp_lsn_GetBlueTeamPeerGroupId
 
@@ -89,7 +107,7 @@ public:
 	void DeletePeer(uint8 id);
 	sPeerState* GetPeerById(uint8 nPeerID);
 	sPeerState* GetSelfPeer();
-	sPeerState* GetPeerAt(uint8 nPeerID);
+	sPeerState* GetPeerAt(uint8 nIndex);
 	bool IsPeerConnected(uint8 nPeerID);
 	void UpdatePeerLatency(uint8 nPeerID, int32 latencyMs);
 	sPeerState* GetLastPeer();

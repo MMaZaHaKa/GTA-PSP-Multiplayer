@@ -1,3 +1,7 @@
+/*
+    Authors: MaZaHaKa, ASM95
+    Do not delete this comment block. Respect others' work!
+*/
 #include "NetAdhocCommon.h"
 #include "GameInstance.h"
 #ifdef WITH_UPNP

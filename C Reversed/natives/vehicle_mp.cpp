@@ -82,24 +82,33 @@ static sVehicle* create_vehicle(int id, CVector& pos, float heading) {
 	assert(pVeh);
 
 	CVector vPos = pos;
+//#if defined(FIX_BUGS) && !defined(GTA_LIBERTY)
+//	if (vPos.z == MAP_Z_LOW_LIMIT || vPos.z <= MAP_Z_LOW_LIMIT_2)
+//		vPos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
+//#else
 	if (vPos.z <= MAP_Z_LOW_LIMIT)
 		vPos.z = CWorld::FindGroundZForCoord(vPos.x, vPos.y);
+//#endif
 	vPos.z += pVeh->GetDistanceFromCentreOfMassToBaseOfModel();
 	pVeh->SetPosition(vPos);
 	pVeh->SetHeading(DEGTORAD(heading));
-	// TODO(MP): code seems from COMMAND_CREATE_CAR, but we have to confirm all the fields
-	TODO();
-	TODO();
-	TODO();
-	TODO();
-	pVeh->SetStatus(STATUS_ABANDONED);
+	pVeh->SetStatus(STATUS_PHYSICS); // real? not STATUS_ABANDONED ?
 	pVeh->bIsLocked = true;
 	CCarCtrl::JoinCarWithRoadSystem(pVeh);
 	pVeh->AutoPilot.m_nCarMission = MISSION_NONE;
 	pVeh->AutoPilot.m_nTempAction = TEMPACT_NONE;
 	pVeh->AutoPilot.m_nDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
-	pVeh->AutoPilot.m_nCruiseSpeed = pVeh->AutoPilot.m_fMaxTrafficSpeed = 9.0f;
-	pVeh->AutoPilot.m_nCurrentLane = pVeh->AutoPilot.m_nNextLane = 0;
+	pVeh->AutoPilot.m_nCruiseSpeed = 9;
+	pVeh->AutoPilot.m_fMaxTrafficSpeed = 9.0f;
+#ifdef GTA_LIBERTY
+	pVeh->AutoPilot.m_nCurrentLane = 0;
+	pVeh->AutoPilot.m_nNextLane = 0;
+#else
+	pVeh->AutoPilot.m_aRouteNodes[ROUTE_NODE_NEXT_NEXT].m_nLane = 0;
+	pVeh->AutoPilot.m_aRouteNodes[ROUTE_NODE_NEXT].m_nLane = 0;
+	pVeh->AutoPilot.m_aRouteNodes[ROUTE_NODE_CURRENT].m_nLane = 0;
+	pVeh->AutoPilot.m_aRouteNodes[ROUTE_NODE_PREV].m_nLane = 0;
+#endif
 	pVeh->bEngineOn = false;
 	pVeh->m_nZoneLevel = CTheZones::GetLevelFromPosition(&vPos);
 	pVeh->bHasBeenOwnedByPlayer = true;
@@ -113,17 +122,17 @@ static sVehicle* create_vehicle(int id, CVector& pos, float heading) {
 #else
 	if (bIsCar)
 		return new sAutomobile((CAutomobile*)pVeh);
-	if (bIsBike)
+	else if (bIsBike)
 		return new sBike((CBike*)pVeh);
-	if (bIsBmx)
+	else if (bIsBmx)
 		return new sBmx((CBmx*)pVeh);
-	if (bIsQuadBike)
+	else if (bIsQuadBike)
 		return new sQuadBike((CQuadBike*)pVeh);
-	if (bIsHeli)
+	else if (bIsHeli)
 		return new sHeli((CHeli*)pVeh);
-	if (bIsPlane)
+	else if (bIsPlane)
 		return new sPlane((CPlane*)pVeh);
-	if (bIsBoat)
+	else if (bIsBoat)
 		return new sBoat((CBoat*)pVeh);
 #endif
 	return nil;
@@ -136,7 +145,7 @@ static int mp_lsn_CreateVehicle(lua_State* L) {
 	debug("mp_lsn_CreateVehicle at %f %f %f\n", pos.x, pos.y, pos.z);
 	float fHeading = luaL_checknumber(L, 3);
 	sVehicle* pVeh = create_vehicle(nVehID, pos, fHeading);
-	lsc_register_entity(L, pVeh);
+	lsc_register_tracked_entity(L, pVeh);
 	if (lua_isnumber(L, 4)) {
 #ifdef GTA_LIBERTY
 		pVeh->m_currentColour1 = lua_tonumber(L, 4);
@@ -164,8 +173,8 @@ static int mp_lsn_CreateVehicle(lua_State* L) {
 	}
 	if (lua_isboolean(L, 6) && lua_toboolean(L, 6))
 	{
-		pVeh->GetPhysical()->b154_4 = true;
-		((CVehicle*)pVeh->GetEntity())->b154_4 = true;
+		pVeh->GetPhysical()->bSyncOutOfLevel = true;
+		((CPhysical*)pVeh->GetEntity())->bSyncOutOfLevel = true;
 	}
 	return 1;
 }
@@ -173,6 +182,7 @@ static int mp_lsn_CreateVehicle(lua_State* L) {
 static int mp_lsn_VehicleAdd3dMarker(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	if (pVeh == nil) {
 		debug("Invalid car sent to VehicleAdd3dMarker\n");
 		lua_pushboolean(L, false);
@@ -186,7 +196,7 @@ static int mp_lsn_VehicleAdd3dMarker(lua_State* L) {
 		packet.owner = pVeh->GetOwner();
 		packet.elem = pVeh->GetID();
 		debug("VehicleAdd3DMarker: %d %d\n", packet.owner, packet.pckt_id);
-		Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
+		Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID); // send to everyone
 		if (packet.owner == Game.LocalPlayerID())
 			on_recv_add_3d_marker(packet, packet.owner, 0, true);
 		bWasAdded = true;
@@ -198,6 +208,7 @@ static int mp_lsn_VehicleAdd3dMarker(lua_State* L) {
 static int mp_lsn_VehicleRemove3dMarker(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	bool bWasRemoved = false;
 	if (pVeh != nil && pVeh->GetEntity()) {
 		net::pckt_remove_3d_marker packet{};
@@ -205,7 +216,7 @@ static int mp_lsn_VehicleRemove3dMarker(lua_State* L) {
 		packet.pckt_id = gtMP_PacketIDs.remove_3d_marker.pckt_id;
 		packet.owner = pVeh->GetOwner();
 		packet.elem = pVeh->GetID();
-		Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
+		Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID); // send to everyone
 		if (packet.owner == Game.LocalPlayerID())
 			on_recv_remove_3d_marker(packet, packet.owner, 0, true);
 		bWasRemoved = true;
@@ -216,22 +227,35 @@ static int mp_lsn_VehicleRemove3dMarker(lua_State* L) {
 
 static int mp_lsn_VehiclePosition(lua_State* L) {
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
+#ifdef GTA_LIBERTY
 	if (pVeh == nil)
 		return 0;
 	CVector pos = pVeh->GetPhysical()->GetPosition();
 	lsc_pushVuVector(L, pos);
 	return 1;
+#else
+	if (pVeh == nil) {
+		lua_pushnil(L);
+	}
+	else {
+		CVector pos = pVeh->GetPhysical()->GetPosition();
+		lsc_pushVuVector(L, pos);
+	}
+	return 1;
+#endif
 }
 
 static int mp_lsn_VehicleHealth(lua_State* L) {
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	if (pVeh == nil) {
 		lua_pushnumber(L, -1.0f);
 		return 1;
 	}
 	sVehicleSync* pSync = pVeh->GetSync().vehicle;
 	float fHealth = pSync->m_fHealth;
-	if (pSync->m_status == eEntityStatus::STATUS_WRECKED)
+	if (pSync->m_nStatus == eEntityStatus::STATUS_WRECKED)
 		fHealth = 0.0f;
 	lua_pushnumber(L, fHealth);
 	return 1;
@@ -240,6 +264,7 @@ static int mp_lsn_VehicleHealth(lua_State* L) {
 static int mp_lsn_VehicleSetHealth(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	const float fHealth = lua_tonumber(L, 2);
 	if (pVeh == nil)
 		return 0;
@@ -262,6 +287,7 @@ static int mp_lsn_VehicleSetHealth(lua_State* L) {
 static int mp_lsn_VehicleSetPosition(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVehMG = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVehMG, sVehicle::Capability());
 	CVector vPos;
 	lsc_getVectorFromStack(vPos, L, 2, true);
 	net::pckt_set_vehicle_position packet{};
@@ -270,10 +296,10 @@ static int mp_lsn_VehicleSetPosition(lua_State* L) {
 	packet.owner = pVehMG->GetOwner();
 	packet.elem = pVehMG->GetID();
 	packet.pos = vPos;
-	if (pVehMG->GetOwner() != Game.LocalPlayerID())
-		Game.SendMessagePriority(packet, packet.owner);
-	else
+	if (pVehMG->GetOwner() == Game.LocalPlayerID())
 		on_recv_set_vehicle_position(packet, packet.owner, 0, true);
+	else
+		Game.SendMessagePriority(packet, packet.owner);
 	return 0;
 }
 
@@ -281,8 +307,9 @@ static int mp_lsn_VehicleSetPosition(lua_State* L) {
 static int mp_lsn_BlowupVehicle(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVehMG = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVehMG, sVehicle::Capability());
 	bool isNumber = lua_isnumber(L, 2);
-	int nPlayerID = lua_tonumber(L, 2);
+	int32 nPlayerID = lua_tonumber(L, 2);
 	if (pVehMG == nil /*|| !isNumber*/) return 0;
 	net::pckt_msg_blowup_vehicle packet{};
 	packet.pckt_size = sizeof(net::pckt_msg_blowup_vehicle);
@@ -290,10 +317,10 @@ static int mp_lsn_BlowupVehicle(lua_State* L) {
 	packet.owner = pVehMG->GetOwner();
 	packet.elem = pVehMG->GetID();
 	packet.player_id = nPlayerID;
-	if (pVehMG->GetOwner() != Game.LocalPlayerID())
-		Game.SendMessagePriority(packet, packet.owner);
-	else
+	if (pVehMG->GetOwner() == Game.LocalPlayerID())
 		on_recv_msg_blowup_vehicle(packet, packet.owner, 0, true);
+	else
+		Game.SendMessagePriority(packet, packet.owner);
 	return 0;
 }
 #endif
@@ -301,6 +328,7 @@ static int mp_lsn_BlowupVehicle(lua_State* L) {
 static int mp_lsn_VehicleGetDriverTeam(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	if (pVeh == nil) return 0;
 	sVehicleSync* pSync = pVeh->GetSync().vehicle;
 	int8 nTeamID = pSync->m_nDriverTeam;
@@ -313,6 +341,7 @@ static int mp_lsn_VehicleGetDriverTeam(lua_State* L) {
 static int mp_lsn_VehicleGetDriverName(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	if (pVeh == nil) return 0;
 	sVehicleSync* pSync = pVeh->GetSync().vehicle;
 	const char* pName = (pSync->m_nDriverTeam == -1) ? "^T^MPEMPTY" : Game.GetPlayerName(pVeh->GetOwner());
@@ -323,8 +352,9 @@ static int mp_lsn_VehicleGetDriverName(lua_State* L) {
 static int mp_lsn_VehicleIsDrivenByPlayer(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	if (pVeh == nil) return 0;
-	bool bIsDrivenByPlayer = pVeh->GetSync().vehicle->m_bIsDrivenByPlayer;
+	bool bIsDrivenByPlayer = pVeh->GetSync().vehicle->bIsDrivenByPlayer;
 	lua_pushboolean(L, bIsDrivenByPlayer);
 	return 1;
 }
@@ -332,6 +362,7 @@ static int mp_lsn_VehicleIsDrivenByPlayer(lua_State* L) {
 static int mp_lsn_VehicleWasRecentlyDrivenByPlayer(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	if (pVeh == nil) return 0;
 	bool bWasDriven = pVeh->GetSync().vehicle->m_nDriverID >= 0;
 	lua_pushboolean(L, bWasDriven);
@@ -341,6 +372,7 @@ static int mp_lsn_VehicleWasRecentlyDrivenByPlayer(lua_State* L) {
 static int mp_lsn_VehicleForceOutPeds(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVehMG = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVehMG, sVehicle::Capability());
 	if (pVehMG == nil) return 0;
 	net::pckt_force_ped_from_vehicle packet{};
 	packet.pckt_size = sizeof(net::pckt_force_ped_from_vehicle);
@@ -349,67 +381,84 @@ static int mp_lsn_VehicleForceOutPeds(lua_State* L) {
 	packet.elem = pVehMG->GetID();
 	if (pVehMG->GetOwner() != Game.LocalPlayerID())
 		Game.SendMessagePriority(packet, packet.owner);
+#ifdef FIX_BUGS
 	else
-		on_recv_force_ped_from_vehicle(packet, packet.owner, 0, true); // inlined
+		on_recv_force_ped_from_vehicle(packet, packet.owner, 0, true);
+#else
+	else {
+		CVehicle* pVeh = (CVehicle*)pVehMG->GetEntity();
+		assert(pVeh);
+		if (pVeh->pDriver)
+			pVeh->pDriver->SetExitCar(pVeh, 0);
+		for (int32 nIndex = 0; nIndex < pVeh->m_nNumMaxPassengers; nIndex++) {
+			if (pVeh->GetPassenger(nIndex))
+				pVeh->GetPassenger(nIndex)->SetExitCar(pVeh, 0);
+		}
+	}
+#endif
 	return 0;
 }
 
 static int mp_lsn_VehicleSetEmergencyStop(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVehMG = (sVehicle*)lsc_get_entity(L, 1);
-	if (pVehMG == nil || !lua_isboolean(L, 2)) return 0;
+	ASSERT_ELEM_CAP(pVehMG, sVehicle::Capability());
+	if ((!lua_isboolean(L, 2)) || pVehMG == nil) return 0;
 	net::pckt_set_vehicle_emergency_break_state packet{};
 	packet.pckt_size = sizeof(net::pckt_set_vehicle_emergency_break_state);
 	packet.pckt_id = gtMP_PacketIDs.set_vehicle_emergency_break_state.pckt_id;
 	packet.owner = pVehMG->GetOwner();
 	packet.elem = pVehMG->GetID();
 	packet.enabled = lua_toboolean(L, 2);
-	if (pVehMG->GetOwner() != Game.LocalPlayerID())
-		Game.SendMessagePriority(packet, packet.owner);
-	else
+	if (pVehMG->GetOwner() == Game.LocalPlayerID())
 		on_recv_set_vehicle_emergency_break_state(packet, packet.owner, 0, true);
+	else
+		Game.SendMessagePriority(packet, packet.owner);
 	return 0;
 }
 
 static int mp_lsn_VehicleSetCarDoorLocks(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVehMG = (sVehicle*)lsc_get_entity(L, 1);
-	if (pVehMG == nil || !lua_isnumber(L, -1)) return 0;
+	ASSERT_ELEM_CAP(pVehMG, sVehicle::Capability());
+	if ((!lua_isnumber(L, -1)) || pVehMG == nil) return 0;
 	net::pckt_set_carlocked_state packet{};
 	packet.pckt_size = sizeof(net::pckt_set_carlocked_state);
 	packet.pckt_id = gtMP_PacketIDs.set_carlocked_state.pckt_id;
 	packet.owner = pVehMG->GetOwner();
 	packet.elem = pVehMG->GetID();
 	packet.state = lua_tonumber(L, -1);
-	if (pVehMG->GetOwner() != Game.LocalPlayerID())
-		Game.SendMessagePriority(packet, packet.owner);
-	else
+	if (pVehMG->GetOwner() == Game.LocalPlayerID())
 		on_recv_set_carlocked_state(packet, packet.owner, 0, true);
+	else
+		Game.SendMessagePriority(packet, packet.owner);
 	return 0;
 }
 
 static int mp_lsn_VehicleSetTyresNoBurst(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVehMG = (sVehicle*)lsc_get_entity(L, 1);
-	if (pVehMG == nil || !lua_isboolean(L, -1)) return 0;
+	ASSERT_ELEM_CAP(pVehMG, sVehicle::Capability());
+	if ((!lua_isboolean(L, -1)) || pVehMG == nil) return 0;
 	net::pckt_set_tyres_no_burst packet{};
 	packet.pckt_size = sizeof(net::pckt_set_tyres_no_burst);
 	packet.pckt_id = gtMP_PacketIDs.set_tyres_no_burst.pckt_id;
 	packet.owner = pVehMG->GetOwner();
 	packet.elem = pVehMG->GetID();
 	packet.enabled = lua_toboolean(L, -1);
-	if (pVehMG->GetOwner() != Game.LocalPlayerID())
-		Game.SendMessagePriority(packet, packet.owner);
-	else
+	if (pVehMG->GetOwner() == Game.LocalPlayerID())
 		on_recv_set_tyres_no_burst(packet, packet.owner, 0, true);
+	else
+		Game.SendMessagePriority(packet, packet.owner);
 	return 0;
 }
 
 static int mp_lsn_VehicleSetColours(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVehMG = (sVehicle*)lsc_get_entity(L, 1);
-	if (pVehMG == nil || !lua_isnumber(L, -1) || !lua_isnumber(L, -2)) return 0;
-	if (pVehMG->GetOwner() != Game.LocalPlayerID()) return 0;
+	ASSERT_ELEM_CAP(pVehMG, sVehicle::Capability());
+	if (!lua_isnumber(L, -1) || !lua_isnumber(L, -2)) return 0;
+	if (pVehMG == nil || pVehMG->GetOwner() != Game.LocalPlayerID()) return 0;
 	const uint32 nColorA = lua_tonumber(L, 2);
 	const uint32 nColorB = lua_tonumber(L, 3);
 #ifdef GTA_LIBERTY
@@ -434,6 +483,7 @@ static int mp_lsn_GetVehicleColour(lua_State* L) {
 static int mp_lsn_VehicleRepair(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	if (pVeh == nil) return 0;
 	net::pckt_repair_car packet{};
 	packet.pckt_size = sizeof(net::pckt_repair_car);
@@ -450,8 +500,9 @@ static int mp_lsn_VehicleRepair(lua_State* L) {
 static int mp_lsn_DeleteVehicle(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
-	if (pVeh == nil)
-		return 0;
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
+	uint32 unused = lua_tonumber(L, 2);
+	if (pVeh == nil) return 0;
 	net::pckt_delete_vehicle packet{};
 	packet.pckt_size = sizeof(net::pckt_delete_vehicle);
 	packet.pckt_id = gtMP_PacketIDs.delete_vehicle.pckt_id;
@@ -467,9 +518,10 @@ static int mp_lsn_DeleteVehicle(lua_State* L) {
 static int mp_lsn_IsVehicleWrecked(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	bool bIsWrecked = true;
-	if (pVeh && pVeh->GetSync().vehicle->m_status != STATUS_WRECKED)
-		bIsWrecked = pVeh->GetSync().vehicle->m_bIsWreked;
+	if (pVeh && pVeh->GetSync().vehicle->m_nStatus != STATUS_WRECKED)
+		bIsWrecked = pVeh->GetSync().vehicle->bIsDrowning;
 	lua_pushboolean(L, bIsWrecked);
 	return 1;
 }
@@ -477,8 +529,9 @@ static int mp_lsn_IsVehicleWrecked(lua_State* L) {
 static int mp_lsn_VehicleGetDriverPlayerId(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	if (pVeh == nil) return 0;
-	int16 nPlayerID = (pVeh->GetSync().vehicle->m_bHasDriver) ? pVeh->GetOwner() : -1;
+	int16 nPlayerID = (pVeh->GetSync().vehicle->bHasDriver) ? pVeh->GetOwner() : -1;
 	lua_pushnumber(L, nPlayerID);
 	return 1;
 }
@@ -486,9 +539,10 @@ static int mp_lsn_VehicleGetDriverPlayerId(lua_State* L) {
 static int mp_lsn_VehicleGetDriverPlayerColour(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	if (pVeh == nil) return 0;
 	uint32 nColor = (uint32)-1;
-	if (pVeh->GetSync().vehicle->m_bHasDriver) {
+	if (pVeh->GetSync().vehicle->bHasDriver) {
 		CRGBA* pColor = Game.GetPlayerColor(pVeh->GetOwner());
 		nColor = RGB24_PACK(pColor->red, pColor->green, pColor->blue);
 	}
@@ -499,6 +553,7 @@ static int mp_lsn_VehicleGetDriverPlayerColour(lua_State* L) {
 static int mp_lsn_VehicleGetLastDamageAmount(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	float fDamangeAmount = -1.0f;
 	if (pVeh != nil)
 		fDamangeAmount = pVeh->GetSync().vehicle->m_fLastDamageAmount;
@@ -509,7 +564,8 @@ static int mp_lsn_VehicleGetLastDamageAmount(lua_State* L) {
 static int mp_lsn_VehicleGetLastDamagePlayerID(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
-	int nPlayerID = -1;
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
+	int32 nPlayerID = -1;
 	if (pVeh != nil)
 		nPlayerID = pVeh->GetSync().vehicle->m_nLastDamagePlayerID;
 	lua_pushnumber(L, nPlayerID);
@@ -518,6 +574,7 @@ static int mp_lsn_VehicleGetLastDamagePlayerID(lua_State* L) {
 
 static int mp_lsn_VehicleClearLastDamagePlayerID(lua_State* L) {
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	if (pVeh && pVeh->GetEntity())
 		((CVehicle*)pVeh->GetEntity())->m_nDamagedByPeerID = -1;
 	return 0;
@@ -525,6 +582,7 @@ static int mp_lsn_VehicleClearLastDamagePlayerID(lua_State* L) {
 
 static int mp_lsn_VehicleAdjustSpeed(lua_State* L) {
 	sVehicle* pVehMG = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVehMG, sVehicle::Capability());
 	float fAdjust = lua_tonumber(L, 2);
 	if (pVehMG == nil) return 0;
 	CVehicle* pVeh = (CVehicle*)pVehMG->GetEntity();
@@ -535,6 +593,8 @@ static int mp_lsn_VehicleAdjustSpeed(lua_State* L) {
 
 static int mp_lsn_LimitTankSpeed(lua_State* L) {
 	sVehicle* pVehMG = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVehMG, sVehicle::Capability());
+	uint32 unused = lua_tonumber(L, 2);
 	if (pVehMG == nil) return 0;
 	CVehicle* pVeh = (CVehicle*)pVehMG->GetEntity();
 	if (pVeh != nil) {
@@ -547,10 +607,11 @@ static int mp_lsn_LimitTankSpeed(lua_State* L) {
 
 static int mp_lsn_LimitVehicleSpeed(lua_State* L) {
 	sVehicle* pVehMG = (sVehicle*)lsc_get_entity(L, 1);
-	if (pVehMG == nil) return 0;
-	CVehicle* pVeh = (CVehicle*)pVehMG->GetEntity();
+	ASSERT_ELEM_CAP(pVehMG, sVehicle::Capability());
 	float fMaxMag = lua_tonumber(L, 2);
 	float fCapMod = lua_tonumber(L, 3);
+	if (pVehMG == nil) return 0;
+	CVehicle* pVeh = (CVehicle*)pVehMG->GetEntity();
 	if (pVeh != nil) {
 		const float fSpeed = pVeh->m_vecMoveSpeed.Magnitude();
 		if (fSpeed > fMaxMag)
@@ -562,6 +623,7 @@ static int mp_lsn_LimitVehicleSpeed(lua_State* L) {
 static int mp_lsn_VehicleGetModelId(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sVehicle* pVeh = (sVehicle*)lsc_get_entity(L, 1);
+	ASSERT_ELEM_CAP(pVeh, sVehicle::Capability());
 	if (pVeh == nil) {
 		lua_pushnumber(L, 0);
 		return 1;
@@ -577,7 +639,7 @@ static int mp_lsn_IsModelIdHeli(lua_State* L) {
 	if (lua_isnumber(L, 1)) {
 		CVehicleModelInfo* mi = (CVehicleModelInfo*)CModelInfo::GetModelInfo(lua_tonumber(L, 1));
 		assert(mi);
-		if (mi->IsHeli()) bIsModelIdHeli = true;
+		bIsModelIdHeli = mi->IsHeli();
 	}
 	lua_pushboolean(L, bIsModelIdHeli);
 	return 1;
@@ -628,13 +690,13 @@ static const luaL_reg ls_vehicle_lib[] = {
 VALIDATE_LUA_LIB(ls_vehicle_lib, (31 + 1), (28 + 1));
 
 inline void open_vehicle_constants(lua_State* L) {
-	lua_pushnumber(L, 1);
+	lua_pushnumber(L, eCarLock::CARLOCK_UNLOCKED);
 	lua_setglobal(L, "CARLOCK_UNLOCKED");
-	lua_pushnumber(L, 2);
+	lua_pushnumber(L, eCarLock::CARLOCK_LOCKED);
 	lua_setglobal(L, "CARLOCK_LOCKED");
-	lua_pushnumber(L, 7);
+	lua_pushnumber(L, eCarLock::CARLOCK_TEAM1_LOCKED);
 	lua_setglobal(L, "CARLOCK_TEAM1_LOCKED");
-	lua_pushnumber(L, 8);
+	lua_pushnumber(L, eCarLock::CARLOCK_TEAM2_LOCKED);
 	lua_setglobal(L, "CARLOCK_TEAM2_LOCKED");
 }
 

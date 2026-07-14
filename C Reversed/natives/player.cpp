@@ -57,19 +57,19 @@ static int mp_lsn_IsPlayerDead(lua_State* L) {
 static int mp_lsn_SetCenterBlipVisible(lua_State* L) {
 	int32 nPlayerID = lsc_getPlayer(L, 1); // unused
 	if (!lua_isboolean(L, 2)) return 0;
-	FindPlayerPed()->m_bIsCenterBlipVisible = (bool)lua_toboolean(L, 2);
+	FindPlayerPed()->m_bIsCenterBlipVisible = lua_toboolean(L, 2);
 	return 0;
 }
 #endif
 
 static int mp_lsn_GetPlayerPosition(lua_State* L) {
-	return mp_lsn_PedPosition(L);
+	return mp_lsn_EntityPosition(L);
 }
 
 static int mp_lsn_PlayerToString(lua_State* L) {
 	lua_pushstring(L, "tostring");
 	lua_gettable(L, LUA_GLOBALSINDEX);
-	int nPlayerID = lsc_getPlayer(L, 1);
+	int32 nPlayerID = lsc_getPlayer(L, 1);
 	lua_pushnumber(L, nPlayerID);
 	lua_call(L, 1, 1);
 	return 1;
@@ -81,7 +81,7 @@ static int mp_lsn_PlayerName(lua_State* L) {
 		Game.SetPlayerName(lua_tostring(L, 1));
 		return 0;
 	}
-	int id = get_player_id(L);
+	int32 id = get_player_id(L);
 	if (Game.IsPlayerConnected(id)) {
 		const char* sPlayerName = Game.GetPlayerName(id);
 		lua_pushstring(L, sPlayerName);
@@ -125,21 +125,21 @@ static int mp_lsn_TeamPeerGroup(lua_State* L) {
 
 static int mp_lsn_PlayerCar(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
-	sPed* pPed = (sPed*)Game.GetEntityForHandle(get_player_id(L), eElementID::MG_ELEMENT_PLAYER_PED_ID); // Game.GetPlayerPed()
+	sPed* pPed = (sPed*)Game.GetEntityForHandle(get_player_id(L), eElementID::MG_ELEMENT_PLAYER_PED_ID);
 	if (pPed == nil) return 0;
 	int16 nVehID = pPed->GetSync().ped->GetVehicleID();
 	if (nVehID == -1) return 0;
 	sElement* pCar = Game.GetEntityForHandle(pPed->GetOwner(), nVehID);
 	if (pCar == nil) return 0;
-	lsc_register_entity(L, pCar);
+	lsc_register_tracked_entity(L, pCar);
 	return 1;
 }
 
 static int mp_lsn_PlayerColour(lua_State* L) {
 #ifdef GTA_LIBERTY
-	int id = lsc_getPlayer(L, 1);
+	int32 id = lsc_getPlayer(L, 1);
 #else
-	int id = lsc_getPlayerSafety(L, 1);
+	int32 id = lsc_getPlayerSafety(L, 1);
 #endif
 	CRGBA* pColor = cMultiGame::Instance().GetPlayerColor(id);
 	uint32 color = RGB24_PACK(pColor->red, pColor->green, pColor->blue);
@@ -149,9 +149,9 @@ static int mp_lsn_PlayerColour(lua_State* L) {
 
 static int mp_lsn_PlayerColourWithAlpha(lua_State* L) {
 #ifdef GTA_LIBERTY
-	int id = lsc_getPlayer(L, 1);
+	int32 id = lsc_getPlayer(L, 1);
 #else
-	int id = lsc_getPlayerSafety(L, 1);
+	int32 id = lsc_getPlayerSafety(L, 1);
 #endif
 	CRGBA* pColor = cMultiGame::Instance().GetPlayerColor(id);
 	uint32 color = CRGBA_PACK(pColor->red, pColor->green, pColor->blue, pColor->alpha);
@@ -161,9 +161,9 @@ static int mp_lsn_PlayerColourWithAlpha(lua_State* L) {
 
 static int mp_lsn_PlayerTeamColour(lua_State* L) {
 #ifdef GTA_LIBERTY
-	int id = lsc_getPlayer(L, 1);
+	int32 id = lsc_getPlayer(L, 1);
 #else
-	int id = lsc_getPlayerSafety(L, 1);
+	int32 id = lsc_getPlayerSafety(L, 1);
 #endif
 	CRGBA* pColor = cMultiGame::Instance().GetTeamColor(id);
 	uint32 color = RGB24_PACK(pColor->red, pColor->green, pColor->blue);
@@ -173,9 +173,9 @@ static int mp_lsn_PlayerTeamColour(lua_State* L) {
 
 static int mp_lsn_IsConnected(lua_State* L) {
 #ifdef GTA_LIBERTY
-	int id = lsc_getPlayer(L, 1);
+	int32 id = lsc_getPlayer(L, 1);
 #else
-	int id = lsc_getPlayerSafety(L, 1);
+	int32 id = lsc_getPlayerSafety(L, 1);
 #endif
 	bool isConnected = cMultiGame::Instance().IsPlayerConnected(id);
 	lua_pushboolean(L, isConnected);
@@ -185,10 +185,10 @@ static int mp_lsn_IsConnected(lua_State* L) {
 static int mp_lsn_StartDown(lua_State* L) { // scoreboard switch
 	if (!is_local_player(lsc_getPlayer(L, 1))) return false;
 	
-	bool bIsDown = CPad::GetPad(0)->GetStartJustDown();
+	bool bIsDown = CPad::GetPad(PAD1)->GetStartJustDown();
 #ifdef GTA_PC // start nw in pc
 	if(!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetEscapeJustDown();
+		bIsDown = CPad::GetPad(PAD1)->GetEscapeJustDown();
 #endif
 
 	lua_pushboolean(L, bIsDown);
@@ -197,14 +197,14 @@ static int mp_lsn_StartDown(lua_State* L) { // scoreboard switch
 
 static int mp_lsn_LeftDown(lua_State* L) {
 	if (!is_local_player(lsc_getPlayer(L, 1))) return 0;
-	CPad* pPad = CPad::GetPad(0);
+	CPad* pPad = CPad::GetPad(PAD1);
 	// TODO: LVCS PC (same for others)
 	bool bIsDown = pPad->GetDPadLeft() || pPad->GetAnaloguePadLeft();
 #ifdef GTA_PC
 	if (!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetCharJustDown('A');
+		bIsDown = pPad->GetCharJustDown('A');
 	if (!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetLeftJustDown();
+		bIsDown = pPad->GetLeftJustDown();
 #endif
 	lua_pushboolean(L, bIsDown);
 	return 1;
@@ -212,14 +212,14 @@ static int mp_lsn_LeftDown(lua_State* L) {
 
 static int mp_lsn_RightDown(lua_State* L) {
 	if (!is_local_player(lsc_getPlayer(L, 1))) return 0;
-	CPad* pPad = CPad::GetPad(0);
+	CPad* pPad = CPad::GetPad(PAD1);
 	// TODO: LVCS PC (same for others)
 	bool bIsDown = pPad->GetDPadRight() || pPad->GetAnaloguePadRight();
 #ifdef GTA_PC
 	if (!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetCharJustDown('D');
+		bIsDown = pPad->GetCharJustDown('D');
 	if (!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetRightJustDown();
+		bIsDown = pPad->GetRightJustDown();
 #endif
 	lua_pushboolean(L, bIsDown);
 	return 1;
@@ -227,14 +227,14 @@ static int mp_lsn_RightDown(lua_State* L) {
 
 static int mp_lsn_UpDown(lua_State* L) {
 	if (!is_local_player(lsc_getPlayer(L, 1))) return 0;
-	CPad* pPad = CPad::GetPad(0);
+	CPad* pPad = CPad::GetPad(PAD1);
 	// TODO: LVCS PC (same for others)
 	bool bIsDown = pPad->GetDPadUp() || pPad->GetAnaloguePadUp();
 #ifdef GTA_PC
 	if (!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetCharJustDown('W');
+		bIsDown = pPad->GetCharJustDown('W');
 	if (!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetUpJustDown();
+		bIsDown = pPad->GetUpJustDown();
 #endif
 	lua_pushboolean(L, bIsDown);
 	return 1;
@@ -242,14 +242,14 @@ static int mp_lsn_UpDown(lua_State* L) {
 
 static int mp_lsn_DownDown(lua_State* L) {
 	if (!is_local_player(lsc_getPlayer(L, 1))) return 0;
-	CPad* pPad = CPad::GetPad(0);
+	CPad* pPad = CPad::GetPad(PAD1);
 	// TODO: LVCS PC (same for others)
 	bool bIsDown = pPad->GetDPadDown() || pPad->GetAnaloguePadDown();
 #ifdef GTA_PC
 	if (!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetCharJustDown('S');
+		bIsDown = pPad->GetCharJustDown('S');
 	if (!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetDownJustDown();
+		bIsDown = pPad->GetDownJustDown();
 #endif
 	lua_pushboolean(L, bIsDown);
 	return 1;
@@ -259,10 +259,10 @@ static int mp_lsn_DownDown(lua_State* L) {
 static int mp_lsn_CrossDown(lua_State* L) {
 	if (!is_local_player(lsc_getPlayer(L, 1))) return 0;
 	// TODO: LVCS PC (same for others)
-	bool bIsDown = CPad::GetPad(0)->GetCross();
+	bool bIsDown = CPad::GetPad(PAD1)->GetCross();
 #ifdef GTA_PC
 	if (!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetEnterJustDown();
+		bIsDown = CPad::GetPad(PAD1)->GetEnterJustDown();
 #endif
 	lua_pushboolean(L, bIsDown);
 	return 1;
@@ -272,23 +272,23 @@ static int mp_lsn_CrossDown(lua_State* L) {
 static int mp_lsn_CircleDown(lua_State* L) {
 	if (!is_local_player(lsc_getPlayer(L, 1))) return 0;
 	// TODO: LVCS PC (same for others)
-	bool bIsDown = CPad::GetPad(0)->GetCircle();
+	bool bIsDown = CPad::GetPad(PAD1)->GetCircle();
 #ifdef GTA_PC
 	if (!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetEscapeJustDown();
+		bIsDown = CPad::GetPad(PAD1)->GetEscapeJustDown();
 #endif
 	lua_pushboolean(L, bIsDown);
 	return 1;
 }
 
-// psp triange like esc on PC
+// psp triangle like esc on PC
 static int mp_lsn_TriangleDown(lua_State* L) {
 	if (!is_local_player(lsc_getPlayer(L, 1))) return 0;
 	// TODO: LVCS PC (same for others)
-	bool bIsDown = CPad::GetPad(0)->GetTriangle();
+	bool bIsDown = CPad::GetPad(PAD1)->GetTriangle();
 #ifdef GTA_PC
 	if (!bIsDown)
-		bIsDown = CPad::GetPad(0)->GetEscapeJustDown();
+		bIsDown = CPad::GetPad(PAD1)->GetEscapeJustDown();
 #endif
 	lua_pushboolean(L, bIsDown);
 	return 1;
@@ -298,7 +298,7 @@ static int mp_lsn_TriangleDown(lua_State* L) {
 //static int mp_lsn_SquareDown(lua_State* L) {
 //	if (!is_local_player(lsc_getPlayer(L, 1))) return 0;
 //	// TODO: LVCS PC (same for others)
-//	bool bIsDown = CPad::GetPad(0)->GetSquare();
+//	bool bIsDown = CPad::GetPad(PAD1)->GetSquare();
 //#ifdef GTA_PC
 //	MULTIGAME_UNIMPLEMENTED(); // test+todo
 //#endif
@@ -308,25 +308,24 @@ static int mp_lsn_TriangleDown(lua_State* L) {
 
 #ifndef GTA_LIBERTY
 static int mp_lsn_HasFlagBall(lua_State* L) {
-	int nPlayerID = lsc_getPlayer(L, 1); // unused?
+	int32 nPlayerID = lsc_getPlayer(L, 1); // unused?
 	lua_pushboolean(L, FindPlayerPed()->HasFlagBall());
 	return 1;
 }
 
 static int mp_lsn_DropFlagBall(lua_State* L) {
-	int nPlayerID = lsc_getPlayer(L, 1); // unused?
+	int32 nPlayerID = lsc_getPlayer(L, 1); // unused?
 	FindPlayerPed()->DropFlagBall();
 	return 0;
 }
 
 static int mp_lsn_GiveFlagBall(lua_State* L) {
-	int nPlayerID = lsc_getPlayer(L, 1); // unused?
+	int32 nPlayerID = lsc_getPlayer(L, 1); // unused?
 	FindPlayerPed()->GiveFlagBall();
 	return 0;
 }
 #endif
 
-/* TODO: stub */
 static int mp_lsn_Latency(lua_State* L) {
 #ifdef GTA_LIBERTY
 	int32 nPlayerID = lsc_getPlayer(L, 1);
@@ -346,19 +345,19 @@ static int mp_lsn_IsPlaying(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	int32 nPlayerID = lsc_getPlayer(L, 1);
 	if (is_local_player(nPlayerID)) {
-		lua_pushboolean(L, CWorld::Players[0].m_WBState == WBSTATE_PLAYING);
+		lua_pushboolean(L, CWorld::Players[CWorld::PlayerInFocus].m_WBState == WBSTATE_PLAYING);
 		return 1;
 	}
-	sPlayer* pPlayer = (sPlayer*)Game.GetEntityForHandle(nPlayerID, MG_ELEMENT_PLAYER_ID); // Game.GetPlayer()
+	sPlayer* pPlayer = (sPlayer*)Game.GetEntityForHandle(nPlayerID, MG_ELEMENT_PLAYER_ID);
+	if (!pPlayer) return 0;
 	lua_pushboolean(L, pPlayer->GetSync().player->m_eWBState == WBSTATE_PLAYING);
 	return 1;
 }
 
 static int mp_lsn_Respawn(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
-	int nPlayerID = lsc_getPlayer(L, 1);
-	if (!is_local_player(nPlayerID))
-		return 0;
+	int32 nPlayerID = lsc_getPlayer(L, 1);
+	if (!is_local_player(nPlayerID)) return 0;
 	CVector pos;
 	lsc_getVectorFromStack(pos, L, 2, true);
 	float fHeading = lua_tonumber(L, 3);
@@ -371,7 +370,7 @@ static int mp_lsn_Respawn(lua_State* L) {
 			bool bRemoveDriver = (pVeh->pDriver && pVeh->pDriver->IsPlayer()) || pVeh->m_nDriverIdMG >= 0;
 			if (bRemoveDriver) {
 				debug("Respawn: Removing driver from vehicle\n");
-				pVeh->pDriver = nil;
+				pVeh->SetDriverPed(nil);
 				pVeh->m_nDriverIdMG = -1;
 				pVeh->bIsBeingCarJacked = false;
 				pVeh->m_vehLCS_258 = false;
@@ -379,8 +378,13 @@ static int mp_lsn_Respawn(lua_State* L) {
 					pVeh->SetStatus(STATUS_ABANDONED);
 			}
 			else {
+#ifdef GTA_LIBERTY
 				CWorld::Remove(pPed->m_pMyVehicle);
-				delete pPed->m_pMyVehicle;
+#else
+				CWorld::Remove(pPed->m_pMyVehicle, eWorldRemoveType::WORLD_REMOVE_WITH_CLEANUP_VEHICLES);
+#endif
+				if(pPed->m_pMyVehicle)
+					delete pPed->m_pMyVehicle;
 			}
 		}
 	}
@@ -388,16 +392,21 @@ static int mp_lsn_Respawn(lua_State* L) {
 	CColStore::RemoveAllCollision();
 #endif
 	TheCamera.m_fCamShakeForce = 0.0f;
-	CMBlur::Reset(); // TODO(MP): missing class
-	//TheCamera.field_5A = 1;
+	CMBlur::Reset();
 	TheCamera.m_bCameraJustRestored = true;
+	TheCamera.m_bCamDirectlyInFront = true;
 #ifdef FIX_BUGS
-	CPad::GetPad(0)->DisablePlayerControls = 0;
+	CPad::GetPad(PAD1)->DisablePlayerControls = 0;
 #else
 	CPad::GetPad(CWorld::PlayerInFocus)->DisablePlayerControls = 0; // what???
 #endif
+//#if defined(FIX_BUGS) && !defined(GTA_LIBERTY)
+//	if (pos.z == MAP_Z_LOW_LIMIT || pos.z <= MAP_Z_LOW_LIMIT_2)
+//		pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
+//#else
 	if (pos.z <= MAP_Z_LOW_LIMIT)
 		pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
+//#endif
 	CGameLogic::RestorePlayerStuffDuringResurrection_NetworkGame(info.m_pPed, pos, fHeading);
 	info.m_WBState = WBSTATE_PLAYING;
 	eGameType eType = Game.GetGameType();
@@ -439,26 +448,41 @@ static int mp_lsn_Respawn(lua_State* L) {
 			pPed->SetCurrentWeapon(eWeaponType::WEAPONTYPE_TEC9);
 			break;
 	}
-	// TODO(MP): missing code
-	pPed->RemoveUberPickup();
-	pPed->SetIdleAndResetAnim();
-	CPad::GetPad(0)->Clear(true);
+	pPed->bBodyPartJustCameOff = false;
+	pPed->m_bodyPartBleeding = -1;
+	FindPlayerPed()->RemoveUberPickup();
+#ifdef GTA_LIBERTY
+	FindPlayerPed()->SetIdleAndResetAnim();
+#else
+	if (FindPlayerPed()->m_nPedState != PED_DRIVING && !FindPlayerPed()->InVehicle())
+	{
+		bool bAllowReset = (FindPlayerPed()->m_nPedState != PED_FIGHT/* ||
+			(FindPlayerPed()->GetCombatManager()->todo && FindPlayerPed()->GetCombatManager()->todo)*/);
+		if(bAllowReset)
+			FindPlayerPed()->SetIdleAndResetAnim();
+	}
+#endif
+	CPad::GetPad(PAD1)->Clear(true);
 	debug("Loading Scene around player...\n");
 	debug("Doing respawn at %f %f %f", pos.x, pos.y, pos.z);
 	CTimer::Suspend();
 	DMAudio.SetEffectsFadeVol(0);
 	CPad::StopPadsShaking();
 	DMAudio.Service();
+#ifdef GTA_LIBERTY
 	CStreaming::LoadSceneCollision(pPed->GetPosition());
+#endif
 	CTimer::Resume();
 	DMAudio.SetEffectsFadeVol(127);
 	debug("Loading scene done, fade started...\n");
 	TheCamera.RestoreWithJumpCut();
+#ifdef GTA_LIBERTY
 	TheCamera.Process();
+#endif
 	TheCamera.SetFadeColour(0, 0, 0);
-	TheCamera.Fade(0, 0.0f);
+	TheCamera.Fade(0.0f, FADE_OUT);
 	TheCamera.ProcessFade();
-	TheCamera.Fade(1, 1.0f);
+	TheCamera.Fade(1.0f, FADE_IN);
 	net::pckt_player_respawn packet{};
 	packet.pckt_size = sizeof(net::pckt_player_respawn);
 	packet.pckt_id = gtMP_PacketIDs.player_respawn.pckt_id;
@@ -476,41 +500,40 @@ enum ButtonMask {
 	BTN_SELECT   = BIT(5),
 };
 
-/* TODO(MP): stub */
 uint32 GetKeyPressState() {
 	uint32_t mask = 0;
-	if (CPad::GetPad(0)->NewState.Circle)
+	if (CPad::GetPad(PAD1)->NewState.Circle)
 		mask |= BTN_CIRCLE;
 
-	if (CPad::GetPad(0)->NewState.Square)
+	if (CPad::GetPad(PAD1)->NewState.Square)
 		mask |= BTN_SQUARE;
 
-	if (CPad::GetPad(0)->NewState.Triangle)
+	if (CPad::GetPad(PAD1)->NewState.Triangle)
 		mask |= BTN_TRIANGLE;
 
-	if (CPad::GetPad(0)->NewState.Cross)
+	if (CPad::GetPad(PAD1)->NewState.Cross)
 		mask |= BTN_CROSS;
 
-	if (CPad::GetPad(0)->NewState.Start)
+	if (CPad::GetPad(PAD1)->NewState.Start)
 		mask |= BTN_START;
 
-	if (CPad::GetPad(0)->NewState.Select)
+	if (CPad::GetPad(PAD1)->NewState.Select)
 		mask |= BTN_SELECT;
 
 #ifdef GTA_PC
-	if (CPad::GetPad(0)->GetEscapeJustDown())
+	if (CPad::GetPad(PAD1)->GetEscapeJustDown())
 		mask |= BTN_START;
 
-	if (CPad::GetPad(0)->GetEnterJustDown())
+	if (CPad::GetPad(PAD1)->GetEnterJustDown())
 		mask |= BTN_CROSS;
 
-	if (CPad::GetPad(0)->GetEscapeJustDown())
+	if (CPad::GetPad(PAD1)->GetEscapeJustDown())
 		mask |= BTN_CIRCLE;
 
-	if (CPad::GetPad(0)->GetEscapeJustDown())
+	if (CPad::GetPad(PAD1)->GetEscapeJustDown())
 		mask |= BTN_TRIANGLE;
 
-	MULTIGAME_UNIMPLEMENTED(); // maybe smth for pc controll?
+	MULTIGAME_UNIMPLEMENTED(); // maybe smth more for pc controll?
 #endif
 
 	return mask;
@@ -529,8 +552,7 @@ static int KeyPressWaiter(lua_State* L) {
 }
 
 static int mp_lsn_WaitKeyPress(lua_State* L) {
-	cMultiGame& Game = cMultiGame::Instance();
-	int nPlayerID = lsc_getPlayer(L, 1);
+	int32 nPlayerID = lsc_getPlayer(L, 1);
 	if (!is_local_player(nPlayerID)) return 0;
 	lua_pushlightuserdata(L, (void*)GetKeyPressState());
 	lua_pushcclosure(L, KeyPressWaiter, 1);
@@ -552,8 +574,7 @@ static int mp_lsn_KeyPressAndCameraWaiter(lua_State* L) {
 }
 
 static int mp_lsn_WaitKeyPressAndCameraCheck(lua_State* L) {
-	cMultiGame& Game = cMultiGame::Instance();
-	int nPlayerID = lsc_getPlayer(L, 1);
+	int32 nPlayerID = lsc_getPlayer(L, 1);
 	if (!is_local_player(nPlayerID)) return 0;
 	lua_pushlightuserdata(L, (void*)GetKeyPressState());
 	lua_pushcclosure(L, mp_lsn_KeyPressAndCameraWaiter, 1);
@@ -563,28 +584,36 @@ static int mp_lsn_WaitKeyPressAndCameraCheck(lua_State* L) {
 static int mp_lsn_SetPlayerPosition(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	CVector pos;
-	int nPlayerID = lsc_getPlayer(L, 1);
+	int32 nPlayerID = lsc_getPlayer(L, 1);
 	lsc_getVectorFromStack(pos, L, 2, true);
 	net::pckt_set_position packet{};
 	packet.pckt_size = sizeof(net::pckt_set_position);
 	packet.pckt_id = gtMP_PacketIDs.set_position.pckt_id;
 	packet.pos = pos;
-	if (is_local_player(nPlayerID))
+	if (is_local_player(nPlayerID)) {
 		on_recv_player_set_position(packet, 0, 0, false); // bug? true from local game?
+//#ifdef FIX_BUGS // not shure about idx -1 its broadcast
+//		return 0; // not send self net packet
+//#endif
+	}
 	Game.SendMessagePriority(packet, nPlayerID);
 	return 0;
 }
 
 static int mp_lsn_SetHeading(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
-	int nPlayerID = lsc_getPlayer(L, 1);
+	int32 nPlayerID = lsc_getPlayer(L, 1);
 	const float fHeading = lua_tonumber(L, 2);
 	net::pckt_set_heading packet{};
 	packet.pckt_size = sizeof(net::pckt_set_heading);
 	packet.pckt_id = gtMP_PacketIDs.set_heading.pckt_id;
 	packet.heading = fHeading;
-	if (is_local_player(nPlayerID))
+	if (is_local_player(nPlayerID)) {
 		on_recv_player_set_heading(packet, 0, 0, false); // bug? true?
+//#ifdef FIX_BUGS // not shure about idx -1 its broadcast
+//		return 0; // not send self net packet
+//#endif
+	}
 	Game.SendMessagePriority(packet, nPlayerID);
 	return 0;
 }
@@ -592,9 +621,9 @@ static int mp_lsn_SetHeading(lua_State* L) {
 static int mp_lsn_SetRadarBlipShortRange(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	if (!lsc_isPlayerUserData(L, 1)) return 0;
-	int nPlayerID = lsc_getPlayer(L, 1);
+	int32 nPlayerID = lsc_getPlayer(L, 1);
 	if (!lua_isboolean(L, 2)) return 0;
-	sPlayer* pPlayer = (sPlayer*)Game.GetEntityForHandle(nPlayerID, MG_ELEMENT_PLAYER_ID); // Game.GetPlayer()
+	sPlayer* pPlayer = (sPlayer*)Game.GetEntityForHandle(nPlayerID, MG_ELEMENT_PLAYER_ID);
 	if (pPlayer && pPlayer->GetBlipIndex() != -1) {
 		bool bIsShortRange = lua_toboolean(L, 2);
 		TheRadar->ms_RadarTrace[TheRadar->GetActualBlipArrayIndex(pPlayer->GetBlipIndex())].bShortRange = bIsShortRange;
@@ -605,11 +634,11 @@ static int mp_lsn_SetRadarBlipShortRange(lua_State* L) {
 static int mp_lsn_SetRadarBlipIcon(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	if (!lsc_isPlayerUserData(L, 1)) return 0;
-	int nPlayerID = lsc_getPlayer(L, 1);
-	int nIconID = -1;
+	int32 nPlayerID = lsc_getPlayer(L, 1);
+	int32 nIconID = -1;
 	if (lua_gettop(L) >= 2)
 		nIconID = lua_tonumber(L, 2);
-	sPlayer* pPlayer = (sPlayer*)Game.GetEntityForHandle(nPlayerID, MG_ELEMENT_PLAYER_ID); // Game.GetPlayer()
+	sPlayer* pPlayer = (sPlayer*)Game.GetEntityForHandle(nPlayerID, MG_ELEMENT_PLAYER_ID);
 	if (pPlayer && pPlayer->GetBlipIndex() != -1) {
 		TheRadar->SetBlipSprite(pPlayer->GetBlipIndex(), nIconID);
 	}
@@ -620,9 +649,9 @@ static int mp_lsn_SetRadarBlipVisibleState(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 #ifdef GTA_LIBERTY
 	if (!lsc_isPlayerUserData(L, 1)) return 0;
-	int nPlayerID = lsc_getPlayer(L, 1);
+	int32 nPlayerID = lsc_getPlayer(L, 1);
 #else
-	int nPlayerID = 0;
+	int32 nPlayerID = 0;
 	if (lsc_isPlayerUserData(L, 1))
 		nPlayerID = lsc_getPlayer(L, 1);
 	else if (lua_isnumber(L, 1))
@@ -631,31 +660,31 @@ static int mp_lsn_SetRadarBlipVisibleState(lua_State* L) {
 	if (!lua_isboolean(L, 2)) return 0;
 	bool bVisible = lua_toboolean(L, 2);
 	net::pckt_set_player_blip_visible_state packet{};
-	packet.pckt_id = gtMP_PacketIDs.set_player_blip_visible_state.pckt_id;
 	packet.pckt_size = sizeof(net::pckt_set_player_blip_visible_state);
+	packet.pckt_id = gtMP_PacketIDs.set_player_blip_visible_state.pckt_id;
 	packet.player_id = nPlayerID;
 	packet.visible = bVisible;
-	if (nPlayerID == Game.LocalPlayerID()) {
+	if (nPlayerID == Game.LocalPlayerID())
 		on_recv_set_player_blip_visible_state(packet, nPlayerID, 0, true);
-		return 0;
-	}
-	Game.SendMessagePriority(packet, nPlayerID);
+	else
+		Game.SendMessagePriority(packet, nPlayerID);
 	return 0;
 }
 
 static int mp_lsn_InATank(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
-	int nPlayerID = Game.LocalPlayerID();
+	int32 nPlayerID = Game.LocalPlayerID();
 	if (lsc_isPlayerUserData(L, 1))
 		nPlayerID = lsc_getPlayer(L, 1);
 	sPed* pPlayer = Game.GetPlayerPed(nPlayerID);
-	sPedSync* pPedSync = pPlayer->GetSync().ped;
 	bool bIsTank = false;
-	if (pPedSync->GetVehicleID() != -1) {
-		sElement* pElem = Game.GetEntityForHandle(pPlayer->GetOwner(), pPedSync->GetVehicleID());
-		CEntity* pVeh = nil;
-		if (pElem) pVeh = pElem->GetEntity();
-		if (pVeh) bIsTank = pVeh->GetModelIndex() == Game.m_nTankModelID;
+	if (pPlayer) {
+		sPedSync* pPedSync = pPlayer->GetSync().ped;
+		if (pPedSync->GetVehicleID() != -1) {
+			sVehicle* pVehicle = (sVehicle*)Game.GetEntityForHandle(pPlayer->GetOwner(), pPedSync->GetVehicleID());
+			if (pVehicle && pVehicle->GetPhysical() && (pVehicle->GetPhysical()->GetModelIndex() == Game.m_nTankModelID))
+				bIsTank = true;
+		}
 	}
 	lua_pushboolean(L, bIsTank);
 	return 1;
@@ -663,7 +692,7 @@ static int mp_lsn_InATank(lua_State* L) {
 
 static int mp_lsn_SetPedHealth(lua_State* L) {
 	if (!lsc_isPlayerUserData(L, 1)) return 0;
-	int nPlayerID = lsc_getPlayer(L, 1);
+	int32 nPlayerID = lsc_getPlayer(L, 1); // unused
 	const float fHealth = lua_tonumber(L, 2);
 	FindPlayerPed()->m_fHealth = fHealth;
 	return 0;
@@ -795,14 +824,19 @@ sPlayer* createPlayerAt(CVector pos) {
 	CBaseModelInfo* pInfo = CModelInfo::GetModelInfo(ga_netModelList[nModelID].name, &nModelID);
 	if (!pInfo)
 		nModelID = MI_PLAYER;
+#ifdef FIX_BUGS
 	if (pPed->m_rwObject)
+#endif
 		pPed->DeleteRwObject();
+	pPed->m_modelIndex = -1;
 	pPed->SetModelIndex(nModelID);
 	pPed->m_animGroup = assocID;
 	sPlayer* pPlayer = new sPlayer(); // ID:0 MG_ELEMENT_PLAYER_ID
+	assert(pPlayer && pPlayer->GetID() == eElementID::MG_ELEMENT_PLAYER_ID);
 	pPlayer->RegisterSelf();
 	cMultiGame::Instance().m_ZoneManager.GetZoneByPeer(MP_HOST_INDEX)->RegisterElement(pPlayer);
 	sPed* pPedMP = new sPed(pPed); // ID:1 MG_ELEMENT_PLAYER_PED_ID
+	assert(pPedMP && pPedMP->GetID() == eElementID::MG_ELEMENT_PLAYER_PED_ID);
 	FindPlayerPed()->GiveWeapon(WEAPONTYPE_BASEBALLBAT, 1);
 	FindPlayerPed()->GiveWeapon(WEAPONTYPE_COLT45, 999);
 	FindPlayerPed()->SetCurrentWeapon(WEAPONTYPE_COLT45);
@@ -817,6 +851,7 @@ void lsc_tryCreateMpPlayer()
 	if (Game.GetPlayerCreationQueued()) {
 		if (!Game.m_bHasSuspended && !TheAdhoc.HadError()) {
 			sPlayer* pPlayer = createPlayerAt(Game.GetPlayerCreationQueuedPosition());
+			// not lsc_register_entity() ? bug?
 		}
 		Game.SetPlayerCreationQueued(false);
 	}
@@ -834,7 +869,7 @@ int mp_lsn_CreatePlayer(lua_State* L) {
 	sPlayer* pPlayer = createPlayerAt(CVector(fPosX, fPosY, fPosZ));
 	lsc_register_entity(L, pPlayer);
 	return 1;
-#else // buggly async vanilla vcs method
+#else
 	Game.RequestPlayerCreation(CVector(fPosX, fPosY, fPosZ));
 	return 0;
 #endif
@@ -842,10 +877,11 @@ int mp_lsn_CreatePlayer(lua_State* L) {
 
 static int mp_lsn_WarpPlayerIntoCar(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
-	int nPedID = luaL_checknumber(L, 1);
+	int32 nPedID = luaL_checknumber(L, 1);
 	sPed* pPedMG = Game.GetPlayerPed(nPedID);
 	CPlayerPed* pPlayer = FindPlayerPed();
 	sElement* pVehMG = lsc_get_entity(L, 2);
+	ASSERT_ELEM_CAP(pVehMG, sVehicle::Capability());
 #ifdef GTA_LIBERTY
 	if (pPedMG != nil && pVehMG != nil && pPedMG->GetEntity() != nil && pVehMG->GetEntity() != nil && !pPlayer->EnteringCar())
 	{
@@ -872,7 +908,7 @@ static int mp_lsn_WarpPlayerIntoCar(lua_State* L) {
 	{
 		if (pPedMG == nil || pPedMG->GetEntity() == nil || !Game.IsElementOwnerLocalPlayer(pVehMG) || pPlayer->EnteringCar())
 		{
-			Game.TransferEntity(pVehMG);
+			Game.TransferEntity(pVehMG); // request peer vehicle to native
 			lua_pushboolean(L, false);
 			debug("Warp Into Vehicle Failed !!!");
 		}
@@ -885,7 +921,7 @@ static int mp_lsn_WarpPlayerIntoCar(lua_State* L) {
 			pPed->SetObjective(eObjective::OBJECTIVE_ENTER_CAR_AS_DRIVER, pVeh);
 			pPed->WarpPedIntoCar(pVeh);
 			pPed->m_pCollidingEntity = nil;
-			pPed->RestorePreviousState();
+			pPed->RestorePreviousObjective();
 			lua_pushboolean(L, true);
 
 			if (!CTheZones::IsPositionInCurrentGameLevel(FindPlayerCoors()))
@@ -918,22 +954,22 @@ static int mp_lsn_ActivatePlayers(lua_State* L) {
 
 static int mp_lsn_Player(lua_State* L) {
 	if (lsc_isPlayerUserData(L, 1))
-		return 1;
-	int nPlayerID = lua_tonumber(L, 1) ? lua_tonumber(L, 1) : cMultiGame::Instance().LocalPlayerID();
+		return 1; // what?
+	int32 nPlayerID = lua_isnumber(L, 1) ? lua_tonumber(L, 1) : cMultiGame::Instance().LocalPlayerID();
 	lsn_push_player_id(L, nPlayerID);
 	return 1;
 }
 
 static int mp_lsn_GameColour(lua_State* L) {
-	int nBlipIndex = lua_tonumber(L, 1);
+	int32 nBlipIndex = lua_tonumber(L, 1);
 	CRGBA* pColor = cMultiGame::Instance().GetBlipColor(nBlipIndex);
 	lua_pushnumber(L, RGB24_PACK(pColor->red, pColor->green, pColor->blue));
 	return 1;
 }
 
 static int mp_lsn_IsPlayerPressingHorn(lua_State* L) {
-	int nPlayerID = get_player_id(L);
-	sPlayer* pPlayer = (sPlayer*)cMultiGame::Instance().GetEntityForHandle(nPlayerID, MG_ELEMENT_PLAYER_ID); // Game.GetPlayer()
+	int32 nPlayerID = get_player_id(L);
+	sPlayer* pPlayer = (sPlayer*)cMultiGame::Instance().GetEntityForHandle(nPlayerID, MG_ELEMENT_PLAYER_ID);
 	if (pPlayer == nil) return 0;
 	bool bIsPressingHorn = pPlayer->isPressingHorn();
 	lua_pushboolean(L, bIsPressingHorn);
@@ -941,8 +977,8 @@ static int mp_lsn_IsPlayerPressingHorn(lua_State* L) {
 }
 
 static int mp_lsn_IsPlayerPressingExit(lua_State* L) {
-	int nPlayerID = get_player_id(L);
-	sPlayer* pPlayer = (sPlayer*)cMultiGame::Instance().GetEntityForHandle(nPlayerID, MG_ELEMENT_PLAYER_ID); // Game.GetPlayer()
+	int32 nPlayerID = get_player_id(L);
+	sPlayer* pPlayer = (sPlayer*)cMultiGame::Instance().GetEntityForHandle(nPlayerID, MG_ELEMENT_PLAYER_ID);
 	if (pPlayer == nil) return 0;
 	bool bIsPressingExit = pPlayer->isPressingExitVehicle();
 	lua_pushboolean(L, bIsPressingExit);
@@ -955,9 +991,9 @@ static int mp_lsn_locate_player(lua_State* L, locate_player_cb locator) {
 	cMultiGame& Game = cMultiGame::Instance();
 	bool bCheckZ = true;
 #ifdef GTA_LIBERTY
-	int nPeer = lsc_pop_peer_id_from_stack(L, 1, -1);
+	int32 nPeer = lsc_pop_peer_id_from_stack(L, 1, -1);
 #else
-	int nPeer = -1;
+	int32 nPeer = -1;
 #endif
 	CVector vPos, vMaxDist(2.5f, 2.5f, 2.5f);
 	lsc_getVectorFromStack(vPos, L, 1, true);
@@ -972,7 +1008,7 @@ static int mp_lsn_locate_player(lua_State* L, locate_player_cb locator) {
 	uint32 nMaxSize = Max(Game.m_pNetSession->m_vPeers.size(), Game.LocalPlayerID() + 1);
 	for (int32 nPeerID = 0; nPeerID < nMaxSize; nPeerID++) {
 		if (!Game.IsSameGroup(nPeer, nPeerID)) continue;
-		sPed* pPed = (sPed*)Game.GetEntityForHandle(nPeerID, eElementID::MG_ELEMENT_PLAYER_PED_ID); // Game.GetPlayerPed()
+		sPed* pPed = (sPed*)Game.GetEntityForHandle(nPeerID, eElementID::MG_ELEMENT_PLAYER_PED_ID);
 		if (pPed != nil && (locator == nil || locator(pPed))) {
 			CVector vDist = pPed->GetSync().ped->GetMatrix().GetPosition() - vPos;
 			if (
@@ -1016,16 +1052,16 @@ static int mp_lsn_LocatePlayerOnFoot(lua_State* L) {
 static int mp_lsn_PlayerControl(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 #ifdef GTA_LIBERTY
-	int nPeer = lsc_pop_peer_id_from_stack(L, 1, 0xB00B5);
+	int32 nPeer = lsc_pop_peer_id_from_stack(L, 1, 0xB00B5);
 	bool bToggle = lua_toboolean(L, 1);
 #else
-	int nPeer = luaL_checknumber(L, 1);
+	int32 nPeer = luaL_checknumber(L, 1);
 	bool bToggle = lua_toboolean(L, 2);
 #endif
 	net::pckt_player_control packet{};
 	packet.pckt_size = sizeof(net::pckt_player_control);
 	packet.pckt_id = gtMP_PacketIDs.player_control.pckt_id;
-	packet.player_control_toggle_type = false;
+	packet.player_control_toggle_type = 0; // pastebug? never send 1, probably detect CarControl or PlayerControl
 	packet.player_control_toggle_value = bToggle;
 	if (Game.IsLocalPlayer(nPeer))
 		on_recv_player_control(packet, 0, 0, false); // bug? true? nPeer
@@ -1034,7 +1070,25 @@ static int mp_lsn_PlayerControl(lua_State* L) {
 }
 
 static int mp_lsn_PlayerCarControl(lua_State* L) {
-	return mp_lsn_PlayerControl(L);
+	//return mp_lsn_PlayerControl(L); // or inlined mp_lsn_PlayerControl, idk bug with type?
+
+	cMultiGame& Game = cMultiGame::Instance();
+#ifdef GTA_LIBERTY
+	int32 nPeer = lsc_pop_peer_id_from_stack(L, 1, 0xB00B5);
+	bool bToggle = lua_toboolean(L, 1);
+#else
+	int32 nPeer = luaL_checknumber(L, 1);
+	bool bToggle = lua_toboolean(L, 2);
+#endif
+	net::pckt_player_control packet{};
+	packet.pckt_size = sizeof(net::pckt_player_control);
+	packet.pckt_id = gtMP_PacketIDs.player_control.pckt_id;
+	packet.player_control_toggle_type = 0; // pastebug? never send 1, probably detect CarControl or PlayerControl
+	packet.player_control_toggle_value = bToggle;
+	if (Game.IsLocalPlayer(nPeer))
+		on_recv_player_control(packet, 0, 0, false); // bug? true? nPeer
+	Game.SendMessagePriority(packet, nPeer);
+	return 0;
 }
 
 static int mp_lsn_PlayerForwardVec(lua_State* L) {
@@ -1052,7 +1106,9 @@ static int mp_lsn_PlayerForwardVec(lua_State* L) {
 	float fDist = vForward.Magnitude2D();
 	vForward.x = vForward.x / fDist;
 	vForward.y = vForward.y / fDist;
-	vForward.z = 0;
+#ifdef FIX_BUGS
+	vForward.z = 0.0f;
+#endif
 	lsc_pushVuVector(L, vForward);
 	return 1;
 }
@@ -1072,13 +1128,15 @@ static int mp_lsn_PlayerRightVec(lua_State* L) {
 	float fDist = vRight.Magnitude2D();
 	vRight.x = vRight.x / fDist;
 	vRight.y = vRight.y / fDist;
-	vRight.z = 0;
+#ifdef FIX_BUGS
+	vRight.z = 0.0f;
+#endif
 	lsc_pushVuVector(L, vRight);
 	return 1;
 }
 
 static int mp_lsn_DisablePlayer(lua_State* L) {
-	CPad::GetPad(0)->DisablePlayerControls = lua_toboolean(L, 1);
+	CPad::GetPad(PAD1)->DisablePlayerControls = lua_toboolean(L, 1);
 #ifdef FIX_BUGS
 	return 0;
 #else
@@ -1089,11 +1147,11 @@ static int mp_lsn_DisablePlayer(lua_State* L) {
 static int mp_lsn_PlayerHealth(lua_State* L) {
 	if (lsc_isPlayerUserData(L, 1))
 	{
-		int nPlayerID = lsc_getPlayer(L, 1);
-		sPed* pPed = (sPed*)cMultiGame::Instance().GetEntityForHandle(nPlayerID, eElementID::MG_ELEMENT_PLAYER_PED_ID); // Game.GetPlayerPed()
+		int32 nPlayerID = lsc_getPlayer(L, 1);
+		sPed* pPed = (sPed*)cMultiGame::Instance().GetEntityForHandle(nPlayerID, eElementID::MG_ELEMENT_PLAYER_PED_ID);
 		if (pPed)
 		{
-			lua_pushnumber(L, (float)pPed->GetSync().ped->m_nHealth);
+			lua_pushnumber(L, pPed->GetSync().ped->m_nHealth);
 			return 1;
 		}
 	}
@@ -1142,7 +1200,14 @@ static int mp_lsn_RepairPlayersVehicle(lua_State* L) {
 		sBike* pBikeMG = Game.GetElementFromEntity<sBike*>(pBike);
 		if (pBikeMG != nil) pBikeMG->Fix();
 	}
-	else // TODO FIX_BUGS + other types vehicles + recheck on_recv_repair_car
+#if !defined(GTA_LIBERTY) && defined(FIX_BUGS)
+	else if (pVeh->IsBoat())
+	{
+		CBoat* pBoat = (CBoat*)pVeh;
+
+	}
+#endif
+	else
 	{
 		assert(pVeh->IsCar());
 		CAutomobile* pAutomobile = (CAutomobile*)pVeh;
@@ -1173,7 +1238,7 @@ static int mp_lsn_SetPlayersVehicleOnFire(lua_State* L) {
 	bool bWasSetOnFire = false;
 	CVehicle* pVeh = FindPlayerVehicle();
 	if (pVeh) {
-		pVeh->m_fHealth = 249.0f;
+		pVeh->m_fHealth = 249.0f; // (DAMAGE_HEALTH_TO_CATCH_FIRE - 1.0f)
 		bWasSetOnFire = true;
 	}
 	lua_pushboolean(L, bWasSetOnFire);
@@ -1188,7 +1253,15 @@ static int mp_lsn_BurstTyresOnPlayersVehicle(lua_State* L) {
 			pVeh->BurstTyre(CAR_PIECE_WHEEL_LF, true);
 			pVeh->BurstTyre(CAR_PIECE_WHEEL_LR, true);
 		}
-		else {
+#if !defined(GTA_LIBERTY) && defined(FIX_BUGS)
+		else if (pVeh->IsBmx()) {
+			// nothing
+		}
+		else if (pVeh->IsBoat()) {
+			// nothing
+		}
+#endif
+		else { // car
 			pVeh->BurstTyre(CAR_PIECE_WHEEL_LF, true);
 			pVeh->BurstTyre(CAR_PIECE_WHEEL_LR, true);
 			pVeh->BurstTyre(CAR_PIECE_WHEEL_RF, true);
@@ -1209,7 +1282,7 @@ static int mp_lsn_IsLocalPlayerInVehicle(lua_State* L) {
 }
 
 static int mp_lsn_LocalPlayerMsSinceLastFired(lua_State* L) {
-	int nLastFireMs = CTimer::GetTimeInMilliseconds() - FindPlayerPed()->m_nPadDownPressedInMilliseconds;
+	int32 nLastFireMs = CTimer::GetTimeInMilliseconds() - FindPlayerPed()->m_nPadDownPressedInMilliseconds;
 	lua_pushnumber(L, nLastFireMs);
 	return 1;
 }
@@ -1243,7 +1316,7 @@ static int mp_lsn_GetLocalPlayersVehicle(lua_State* L) {
 	CVehicle* pVeh = pPlayer->m_pMyVehicle;
 	sVehicle* pVehMG = cMultiGame::Instance().GetElementFromEntity<sVehicle*>(pVeh);
 	if (pVehMG && pVehMG->HasCapability(sVehicle::Capability())) {
-		lsc_register_entity(L, pVehMG);
+		lsc_register_tracked_entity(L, pVehMG);
 		return 1;
 	}
 	return 0;
@@ -1251,7 +1324,7 @@ static int mp_lsn_GetLocalPlayersVehicle(lua_State* L) {
 
 int mp_lsn_InitialSpawnPoint(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
-	int nPlayerID = get_player_id(L);
+	int32 nPlayerID = get_player_id(L);
 	lua_pushnumber(L, Game.GetSpawnPointFromPlayer(nPlayerID));
 	return 1;
 }
@@ -1274,7 +1347,7 @@ static int mp_lsn_IsAreaClearOfPlayers(lua_State* L) {
 	uint32 nMaxSize = Max(Game.m_pNetSession->m_vPeers.size(), Game.LocalPlayerID() + 1);
 	for (int32 nPeerID = 0; nPeerID < nMaxSize; nPeerID++) {
 		if (Game.GetPlayer(nPeerID) == nil) continue;
-		sPed* pPed = (sPed*)Game.GetEntityForHandle(nPeerID, eElementID::MG_ELEMENT_PLAYER_PED_ID); // Game.GetPlayerPed()
+		sPed* pPed = (sPed*)Game.GetEntityForHandle(nPeerID, eElementID::MG_ELEMENT_PLAYER_PED_ID);
 		if (pPed == nil) continue;
 		CVector vPlayerPos = pPed->GetSync().ped->GetMatrix().GetPosition();
 #ifdef GTA_LIBERTY
@@ -1294,9 +1367,9 @@ static int mp_lsn_IsAreaClearOfPlayers(lua_State* L) {
 static int mp_lsn_ToggleLocalPlayerControls(lua_State* L) {
 	const bool bToggle = lua_toboolean(L, 1);
 	if (bToggle)
-		CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_PLAYERINFO);
+		CPad::GetPad(PAD1)->SetEnablePlayerControls(PLAYERCONTROL_PLAYERINFO);
 	else
-		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_PLAYERINFO);
+		CPad::GetPad(PAD1)->SetDisablePlayerControls(PLAYERCONTROL_PLAYERINFO);
 	return 0;
 }
 
@@ -1314,8 +1387,8 @@ static int mp_lsn_IsLocalPlayerDrowning(lua_State* L) {
 
 static int mp_lsn_MapPlayerColourToCarColour(lua_State* L) {
 #ifdef GTA_LIBERTY
-	const int nPlayerColor = lua_tonumber(L, 1);
-	int nVehColor = 0;
+	const int32 nPlayerColor = lua_tonumber(L, 1);
+	int32 nVehColor = 0;
 	switch (nPlayerColor)
 	{
 		case 1: nVehColor = 3; break;
@@ -1327,7 +1400,7 @@ static int mp_lsn_MapPlayerColourToCarColour(lua_State* L) {
 		case 7: nVehColor = 65; break;
 	}
 #else
-	int nId = lua_tonumber(L, 1);
+	int32 nId = lua_tonumber(L, 1);
 	CRGBA* pColor = cMultiGame::Instance().GetPlayerColor(nId);
 	uint32 nVehColor = CRGBA_PACK(pColor->red, pColor->green, pColor->blue, pColor->alpha);
 #endif

@@ -55,7 +55,7 @@ extern "C" {
 
 #define LUA_PUSH_CONSTANT_VEC(constname, x, y, z) \
 	lua_pushstring(L, constname); \
-	ls_pushVector3D(L, x, y, z); \
+	lsc_pushVector3D(L, x, y, z); \
 	lua_settable(L, -3);
 
 #define LUA_TABLE_END(tablename) \

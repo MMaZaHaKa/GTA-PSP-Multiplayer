@@ -8,10 +8,22 @@
 #include "LScript.h"
 #include "multiplayer/elements/sElement.h"
 
-#define TRACKED_ENTITY_TYPE       (0xA8000000)
-#define TRACKED_ENTITY_TYPE_MASK  (0xFF000000)
-#define TRACKED_ENTITY_OWNER_MASK (0x00FF0000)
-#define TRACKED_ENTITY_ID_MASK    (0x0000FFFF)
+#define TRACKED_ENTITY_TYPE_BYTE				 (3)
+#define TRACKED_ENTITY_OWNR_BYTE				 (2) // ID 0|1
+#define TRACKED_ENTITY_TYPE						 (0xA8u << (8u * TRACKED_ENTITY_TYPE_BYTE)) // 0xA8000000 // HI BYTE
+#define TRACKED_ENTITY_TYPE_MASK				 (0xFFu << (8u * TRACKED_ENTITY_TYPE_BYTE)) // 0xFF000000
+#define TRACKED_ENTITY_TRACK(nHandle)			 ((nHandle & TRACKED_ENTITY_TYPE_MASK) == TRACKED_ENTITY_TYPE)
+#define TRACKED_ENTITY_PACK(nElemOwner, nElemID) \
+    (uint32(TRACKED_ENTITY_TYPE | \
+           ((uint8(nElemOwner & 0xFFu)) << (8u * TRACKED_ENTITY_OWNR_BYTE)) | \
+           (uint16(nElemID))))
+
+
+#define TRACKED_ENTITY_OWNER(nHandle) \
+    (uint8((nHandle & (0xFFu << (8u * TRACKED_ENTITY_OWNR_BYTE))) >> (8u * TRACKED_ENTITY_OWNR_BYTE)))
+
+#define TRACKED_ENTITY_ID(nHandle) \
+    (uint16(nHandle & 0x0000FFFFu))
 
 int lsn_none(lua_State* L);
 
@@ -23,12 +35,12 @@ int32 lsc_getPlayer(lua_State* L, int index);
 int32 lsc_getPlayerSafety(lua_State* L, int index);
 bool lsc_is_entity_tracked(lua_State* L, int index);
 uint32 lsc_get_tracked_entity(lua_State* L, int index);
-void mp_lsc_transfer_entity(int nKeyOwner, int nKeyID, int nOwner, int nID);
-void lsc_register_entity(lua_State* L, sElement *pElem);
+void lsc_transfer_tracked_entity(int32 nFromOwner, uint16 nFromID, int32 nToOwner, uint16 nToID);
+void lsc_register_tracked_entity(lua_State* L, sElement *pElem);
 sElement* lsc_get_entity(lua_State* L, int index);
 uint32 lsc_getColor(lua_State* L, int index);
 #ifdef GTA_LIBERTY
-int lsc_pop_peer_id_from_stack(lua_State* L, int index, int unk);
+int32 lsc_pop_peer_id_from_stack(lua_State* L, int index, int unk);
 #endif
 int lsc_call(lua_State* L, int narg, bool clear);
 void lsc_update_simsch();
@@ -36,7 +48,9 @@ void lsn_push_player_id(lua_State* L, int id);
 #ifndef GTA_LIBERTY
 void lsc_tryCreateMpPlayer();
 #endif
-int mp_lsn_PedPosition(lua_State* L); // for player.cpp
+int mp_lsn_EntityPosition(lua_State* L); // for player.cpp
+
+#define ASSERT_ELEM_CAP(pElem, cap) if(pElem) { assert(pElem->HasCapability(cap)); }
 
 inline CRGBA lsc_getColour(lua_State* L, int32 nIndex) {
 	return CRGBA(lua_tonumber(L, nIndex), lua_tonumber(L, nIndex + 1), lua_tonumber(L, nIndex + 2), lua_tonumber(L, nIndex + 3));
@@ -50,21 +64,9 @@ inline bool is_local_player(int id) {
 //	return id == -1 || id == cMultiGame::Instance().LocalPlayerID();
 //}
 
-inline int get_player_id(lua_State* L) {
-	int id = lsc_isPlayerUserData(L, 1) ? lsc_getPlayer(L, 1) : cMultiGame::Instance().LocalPlayerID();
-	return id;
+inline int32 get_player_id(lua_State* L) {
+	return (lsc_isPlayerUserData(L, 1) ? lsc_getPlayer(L, 1) : cMultiGame::Instance().LocalPlayerID());
 }
-
-//inline void CVectorToRwV3d(RwV3d& dest, CVector& src) {
-//	dest.x = src.x;
-//	dest.y = src.y;
-//	dest.z = src.z;
-//}
-//inline void RwV3dToCVector(RwV3d& src, CVector& dest) {
-//	dest.x = src.x;
-//	dest.y = src.y;
-//	dest.z = src.z;
-//}
 
 inline void max_swap(float& a, float& b) {
 	if (a > b) {
@@ -104,7 +106,7 @@ inline void max_swap(float& a, float& b) {
 //	return lsc_pack_color(color.red, color.green, color.blue, color.alpha);
 //}
 
-void lscript_open_ped();
+void lscript_open_entity();
 void lscript_open_player();
 void lscript_open_vehicle();
 void lscript_open_radar();

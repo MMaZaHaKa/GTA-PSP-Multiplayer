@@ -16,11 +16,14 @@ void dump_packet_data(net::pckt_base& packet, const char* str, int32 colour); //
 void DebugMultigameTriggerError(); // spread error, stop all games, i guess
 #endif
 
+void MultigameKickPlayer(uint8 nID);
+void MultigameRequestKickPlayer(uint8 nID);
+
 // FireMessageHandler - NO ID, entry point to dispatcher  moved into cMultiGame
 
 void on_recv_start_fire(net::pckt_start_fire& packet, int sender, uint16 time, bool bFromRing); // 0
-void on_recv_ack(net::pckt_ack& packet, int sender, uint16 time, bool bFromRing); // 1
-void on_recv_info(net::pckt_info& packet, int sender, uint16 time, bool bFromRing); // 2  cNetSession::ClientConnect()
+//void on_recv_ack(net::pckt_ack& packet, int sender, uint16 time, bool bFromRing); // 1
+//void on_recv_info(net::pckt_info& packet, int sender, uint16 time, bool bFromRing); // 2  cNetSession::ClientConnect()
 //void on_recv_player_kill(net::pckt_player_kill& packet, int sender, uint16 time, bool bFromRing); // 3  moved into cMultiGame
 void on_recv_kick_player(net::pckt_kick_player& packet, int sender, uint16 time, bool bFromRing); // 4
 void on_recv_request_kick_player(net::pckt_request_kick_player& packet, int sender, uint16 time, bool bFromRing); // 5 non vcs

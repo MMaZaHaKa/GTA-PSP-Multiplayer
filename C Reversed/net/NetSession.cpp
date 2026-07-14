@@ -393,13 +393,17 @@ void cNetSession::Reset() {
 #ifndef GTA_LIBERTY
 	m_nSendQueueCount = 0;
 #endif
-	m_nSelfPeerID = 0;
+	m_nSelfPeerID = NET_SESSION_DEFAULT_HOST_ID;
 	m_vSendQueueList.clear();
 #ifdef GTA_LIBERTY
 	CreatePeerGroup(); // result unused
 	CreatePeerGroup();
 #else
 	CreatePeerGroup(BROADCAST_PEER_GROUPID);
+#endif
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+	CreatePeerGroup(BROADCAST_VANILLA_DEVICE_GROUPID);
+	CreatePeerGroup(BROADCAST_CUSTOM_DEVICE_GROUPID);
 #endif
 	// Resize to size=1 with nil (for self slot)
 	// recheck!
@@ -562,7 +566,7 @@ void cNetSession::SendMessage(const net::pckt_base& packet, int32 nGroupID) {
 	if (nGroupID < 0)
 		nGroupID = m_vPeers.size() - nGroupID - 1;
 
-	if (nGroupID == m_nSelfPeerID) 
+	if (nGroupID == m_nSelfPeerID)
 		return;
 
 	assert(nGroupID < m_vSendQueueList.size());
@@ -572,6 +576,9 @@ void cNetSession::SendMessage(const net::pckt_base& packet, int32 nGroupID) {
 	if (usedBytes > NET_SESSION_MAX_GROUP_USED_BYTES) {
 		debug("Too many messages in sendqueue of groupId %d", nGroupID);
 		// no cAdhoc::Instance().SetHasError() ?
+#if !defined(FINAL) && !defined(MASTER)
+		pQueue->m_vecPacketBuffer.clear();
+#endif
 	}
 	else {
 		if (pQueue->nForceQueueID != -1)
@@ -626,6 +633,9 @@ void cNetSession::SendMessage(const net::pckt_base& packet, int32 nGroupID) {
 #else
 		debug("Too many messages in sendqueue of groupId %d", nGroupID); // LCS
 #endif
+#if !defined(FINAL) && !defined(MASTER)
+		pQueue->m_vecPacketBuffer.clear();
+#endif
 	}
 	else {
 		uint32 oldSize = pQueue->m_vecPacketBuffer.size();
@@ -659,7 +669,9 @@ void cNetSession::SendMessagePriority(const net::pckt_base& packet, int32 nGroup
 #endif
 
 void cNetSession::SendAckPacket(const net::pckt_ack& packet, int32 destID) {
-	if (destID == m_nSelfPeerID) return;
+	if (destID == m_nSelfPeerID)
+		return;
+
 	SendMessage(packet, destID);
 }
 
@@ -775,18 +787,30 @@ void cNetSession::DeletePeer(int32 nPeerID) {
 }
 
 void cNetSession::PrintAllPeerGroups() {
+#if !defined(FINAL) && !defined(MASTER)
+	cMultiGame& Game = cMultiGame::Instance();
 	for (uint32 i = 0; i < m_vSendQueueList.size(); i++)
 	{
 		cSendQeue& q = m_vSendQueueList[i];
 		// my vision
 		printf("//------ cNetSession::PrintAllPeerGroups() -> cSendQeue %d\n", i);
-		printf("  m_nID: %d\n", q.m_nID);
+		// -1 broadcast, -2 -3 vcs team a b, -4 -5 my ext, 0, 1 .. peer id like peerID == groupID leeds id compat
+		if (q.m_nID < 0) {
+			printf("  GroupID: %d (GENERIC GROUP)\n", q.m_nID);
+			for (auto& peerID : q.m_vecPeerList) {
+				printf("    PeerID: %d [%s]\n", peerID, Game.GetPlayerName(peerID));
+			}
+		}
+		else {
+			printf("  GroupIDOrPeerID: %d [%s] (DIRECT PEERID/GROUP)\n", q.m_nID, Game.GetPlayerName(q.m_nID));
+		}
 		printf("  m_bIsUsed: %d\n", q.m_bIsUsed);
 		printf("  m_nForceQueueID: %d\n", q.m_nForceQueueID);
 		printf("  m_vecPacketBuffer.size(): %d\n", (int32)q.m_vecPacketBuffer.size());
 		printf("  m_vecPacketBufferPrio.size(): %d\n", (int32)q.m_vecPacketBufferPrio.size());
 		printf("  m_vecPeerList.size(): %d\n\n", (int32)q.m_vecPeerList.size());
 	}
+#endif
 }
 #endif
 
@@ -1197,14 +1221,15 @@ void cNetSession::UpdateSend() {
 			req.nDelta = m_nAdjustedDelta;
 			InitPacketObj(req.req.packet);
 
-			if (queue.m_vecPacketBufferPrio.size() > prioOffset && !m_bSendLimitReached)
-			{
+			// Prio messages
+			if (queue.m_vecPacketBufferPrio.size() > prioOffset && !m_bSendLimitReached) {
 				req.req.packet.nSize += 2;
 				uint32 appended = PacketAppend(req.req.packet, queue.m_vecPacketBufferPrio.begin() + prioOffset, queue.m_vecPacketBufferPrio.end());
 				req.req.packet.header.field_2 += appended + 2;
 				prioOffset += appended;
 			}
 
+			// Default messages
 			if (queue.m_vecPacketBuffer.size() > normalOffset) {
 				uint32 appended = PacketAppend(req.req.packet, queue.m_vecPacketBuffer.begin() + normalOffset, queue.m_vecPacketBuffer.end());
 				normalOffset += appended;
@@ -1228,7 +1253,7 @@ void cNetSession::UpdateSend() {
 						}
 					}
 					if (req.req.packet.nSize > 6)
-						AttemptSendPacket(req, peerID, 0);
+						AttemptSendPacket(req, peerID, 0); // <-- send packet to current peer
 				}
 			}
 

@@ -159,7 +159,7 @@ namespace net {
 	};
 
 	struct pckt_clock : pckt_base { // ID 18 (non vcs)
-		TODO(); // from lcs
+		// ?
 	};
 
 	struct pckt_game_time : pckt_base { // ID 19
@@ -208,27 +208,34 @@ namespace net {
 		uint8 mass : 1; // bit0 - infinite mass
 	};
 
-	// todo new
 	struct pckt_fight_hit_ped : pckt_base { // ID 27
-		// Rechek + test
-		TODO();
-#ifndef GTA_LIBERTY
-#endif
+#ifdef GTA_LIBERTY
 		uint16 victim_id;
 		uint16 attacker_id;
-		uint16 ped_piece; // u8? +pad
+		uint16 ped_piece;
 		uint8 damage_mult;
 		uint8 local_dir;
 		uint8 cur_fight_move;
 		uint8 weapon;
 		RwV3d blood_pos;
 		RwV3d dir;
+#else
+		RwV3d move_pos; // recheck wrld pos
+		RwV3d move_end_pos; // recheck wrld pos
+		RwV3d move_force; // recheck 0 0 0
+		float radius;
+		uint16 victim_id;
+		uint16 attacker_id;
+		uint16 ped_piece;
+		uint8 damage_mult;
+		uint8 local_dir;
+		uint8 weapon;
+		uint8 cur_fight_move; // recheck
+		uint8 victim_cur_fight_move; // recheck
+#endif
 	};
 
-	// todo new
 	struct pckt_shot_ped : pckt_base { // ID 28
-		// Rechek + test
-		TODO();
 		uint16 victim_id;
 		uint16 shooter_id;
 		uint16 ped_piece; // u8? +pad
@@ -336,9 +343,24 @@ namespace net {
 		uint8 type;
 	};
 
-	// todo new
 	struct pckt_melee : pckt_base { // ID 39
+		RwV3d blood_pos;
+		RwV3d collision_dist;
 
+		// Flags
+		uint8 localDir : 4;
+		uint8 bIsHeavy : 1;
+		uint8 bAnim2Playing : 1;
+		uint8 b1B_40 : 1;
+		uint8 b1B_80 : 1;
+
+		uint8 damage;
+		uint8 field_1D[2];
+		uint8 weapon;
+		uint16 victim_id;
+		uint16 shooter_id;
+		uint8 pieceB;
+		uint8 field_25;
 	};
 
 	struct pckt_player_been_hit : pckt_base { // ID 40
@@ -347,8 +369,8 @@ namespace net {
 	};
 
 	struct pckt_player_control : pckt_base { // ID 41
-		uint8 player_control_toggle_type : 1; // bit0 - toggle state
-		uint8 player_control_toggle_value : 1; // bit1 - toggle value
+		uint8 player_control_toggle_value : 1;
+		uint8 player_control_toggle_type : 1;
 	};
 
 	struct pckt_set_position : pckt_base { // ID 42
@@ -440,8 +462,8 @@ namespace net {
 	};
 
 	struct pckt_vehicle_impact : pckt_base { // ID 58
-		int32 src;
 		int32 dest;
+		int32 src;
 		RwV3d vPoint;
 		RwV3d vNormal;
 		uint8 pieceB;
@@ -580,12 +602,12 @@ namespace net {
 		packet_id_list_t()
 		{
 #define REG_PCKT(pcktname, var, type, pspsize)				\
+	assert(ARRAY_SIZE(aPacketsDefs) > snPacketCount);		\
 	var.pckt_name = pcktname;								\
 	var.pckt_size = sizeof(type);							\
-	MP_TEST_SIZE(pcktname, type, pspsize, snPacketCount);	\
 	var.pckt_id = snPacketCount;							\
-	assert(ARRAY_SIZE(aPacketsDefs) > snPacketCount);	\
-	aPacketsDefs[snPacketCount] = &var;					\
+	MP_TEST_SIZE(pcktname, type, pspsize, var.pckt_id);		\
+	aPacketsDefs[snPacketCount] = &var;						\
 	snPacketCount++;
 	//var.pckt_def_id = gnMP_PacketCount; \
 	//gnMP_PacketCount++;
@@ -687,7 +709,7 @@ namespace net {
 		void TestSizes()
 		{
 #define TEST_PCKT(pcktname, var, type, pspsize)				\
-	MP_TEST_SIZE(pcktname, type, pspsize, snPacketCount);
+	MP_TEST_SIZE(pcktname, type, pspsize, var.pckt_id);
 
 			TEST_PCKT("STARTFIRE",                     start_fire,                        net::pckt_start_fire,                        PS(24, 24));   //ID 0
 			TEST_PCKT("ACK",                           ack,                               net::pckt_ack,                               PS(5, 5));     //ID 1

@@ -34,7 +34,7 @@ void register_halo_element(lua_State* L, uint16 id) {
 }
 
 int mp_lsn_SetHalo(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
+	cMultiGame& Game = TheMPGame;
 	CVector vPos;
 	CVector vExtent(7.0f, 7.0f, 7.0f);
 	uint32 nColor = 0xFF0000; // brga
@@ -45,11 +45,11 @@ int mp_lsn_SetHalo(lua_State* L) {
 	}
 	if (nTop >= 3) {
 		int32 nColorIndex = lua_tonumber(L, 3);
-		CRGBA Color = *pGame.GetBlipColor(nColorIndex);
+		CRGBA Color = *Game.GetBlipColor(nColorIndex);
 		nColor = BGRA_PACK(Color.r, Color.g, Color.b, 255);
 	}
 	float fMarkerSize = (nTop >= 4) ? lua_tonumber(L, 4) : (vExtent.x * 0.875f);
-	uint16 nHaloID = pGame.m_haloManager.Add(vPos, vExtent, nColor, fMarkerSize);
+	uint16 nHaloID = Game.m_haloManager.Add(vPos, vExtent, nColor, fMarkerSize);
 	register_halo_element(L, nHaloID);
 	return 1;
 }

@@ -289,10 +289,12 @@ void cLobbyPed::Render() {
 	RwFrameTransform(RwCameraGetFrame(pCam), &mat, rwCOMBINEREPLACE);
 	RwFrameUpdateObjects(RwCameraGetFrame(pCam));
 
+#if 1
 	RwCameraEndUpdate(pCam); // TODO!!!! tmp hack to fix 1st frame lobbyped at wrong screen pos, todo mean
 	RwCameraBeginUpdate(pCam); // apply cam frame transform
-	RwRenderStateSet(rwRENDERSTATEZTESTENABLE, (void*)true); // TODO!!!! tmp hack to test Z, it is turned on by CSprite2d::DrawRect before CPlayerSkin::RenderFrontendSkinEdit lol
-	RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*)true); // same shit (disables at CMenuManager::SetFrontEndRenderStates seems missed in psN)
+	RwRenderStateSet(rwRENDERSTATEZTESTENABLE, (void*)TRUE); // TODO!!!! tmp hack to test Z, it is turned on by CSprite2d::DrawRect before CPlayerSkin::RenderFrontendSkinEdit lol
+	RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*)TRUE); // same shit (disables at CMenuManager::SetFrontEndRenderStates seems missed in psN)
+#endif
 
 	if (!RpAnimBlendClumpGetAssociation(m_pPed->GetClump(), ANIM_STD_WALK))
 	{
@@ -305,7 +307,7 @@ void cLobbyPed::Render() {
 	m_pPed->UpdateAnim();
 	CTimer::SetTimeStep(0);
 	m_pPed->PreRender();
-	SetLightsForMultiplayerLobbyPed(1.0);
+	SetLightsForMultiplayerLobbyPed(1.0f);
 	m_pPed->Render();
 	if (m_pPed->m_pVehicleAnim)
 		m_fWalkAnimTime = m_pPed->m_pVehicleAnim->currentTime;

@@ -80,13 +80,20 @@
 
 #define MP_LOAD_FLAGS (STREAMFLAGS_DEPENDENCY | STREAMFLAGS_DONT_REMOVE) // 5
 #define USE_COMPILED_LUA
-#define MP_FE_MOUSE_IMPROVEMENTS
 //#define MP_USE_CUSTOM_ALLOCATOR
 
 #define DEBUG_MULTIGAME // some tmp debug stuff + log
+
+#define MP_FE_MOUSE_IMPROVEMENTS
 //#define MULTIGAME_IMPROVEMENTS // more sync stuff, improvements, extras, etc, custom non re code
+#define DEBUG_MULTIGAME_IMPROVEMENTS // additional logic for assertation + etc
+#define MULTIGAME_ELEMENTS_IMPROVEMENTS // more code for entities (bike lights render, etc)
 #ifdef MULTIGAME_IMPROVEMENTS
     #define MULTIGAME_SCM // non lua mode, scm
+#endif
+
+#if defined(MULTIGAME_ELEMENTS_IMPROVEMENTS) && defined(ADHOCCTL_USE_CUSTOM_IDENT) && !defined(GTA_PSP)
+    //#define MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS // todo mean how fast send sync directly for each peers (for controll delta + skip full custom(headers))
 #endif
 
 #ifdef MULTIGAME_SCM
@@ -128,6 +135,10 @@
 #define MULTIGAME_UNIMPLEMENTED() assert(1 && "todo me [MG]")
 #endif
 
+#define FLT_EPS (0.000001f)
+#define FLT_EPS_EQ(a, b) (fabsf((a) - (b)) <= FLT_EPS)
+#define FLT_EPS_NOT_EQ(a, b) (FLT_EPS_EQ(a, b) == false)
+
 // for adhoc bug fix when in release cAdhoc::StateIdle, cAdhoc::StateShutdown mixed into 1 empty function for all empty functions
 #if 0
 #define _KCF_CAT(a,b) a##b
@@ -147,7 +158,37 @@
 #endif
 
 #if !defined(FINAL) && !defined(MASTER)
-#define DONT_OPTIMIZE()    // TMP HIDDEN                                                                                                      \
+#define DONT_OPTIMIZE()                                                                                                         \
+    do                                                                                                                          \
+    {                                                                                                                           \
+        static volatile uint32 _dont_optimize_seed = 777 + static_cast<uint32>(__TIME__[1]) + static_cast<uint32>(__TIME__[2]); \
+        volatile uint32 a = __LINE__;                                                                                           \
+        volatile uint32 b = a * 1664525u + 1013904223u;                                                                         \
+        volatile uint32 c = (b >> 16) ^ (a << 8);                                                                               \
+        volatile uint32 d = (c * 2654435761u) ^ 0xDEADBEEF;                                                                     \
+        volatile uint32 e = d ^ (d >> 13);                                                                                      \
+        volatile uint32 f = (e << 17) ^ (e >> 7);                                                                               \
+        volatile uint32 g = (f * 1103515245u + 12345u);                                                                         \
+        volatile uint32 h = (g >> 3) ^ (g << 11);                                                                               \
+        volatile uint32 i = (h ^ 0xCAFEBABE) + (h >> 5);                                                                        \
+        volatile uint32 j = (i * 31u) ^ (i >> 9);                                                                               \
+        volatile uint32 k = (j ^ (j << 21)) + (j >> 19);                                                                        \
+        volatile uint32 l = k ^ 0x13579BDFu;                                                                                    \
+        volatile uint32 m = (l << 13) ^ (l >> 7);                                                                               \
+        volatile uint32 n = (m * 97u) ^ (m >> 17);                                                                              \
+        volatile uint32 o = (n ^ (n << 5)) + (n >> 23);                                                                         \
+        volatile uint32 p = (o * 1664525u + 1013904223u);                                                                       \
+        volatile uint32 q = (p ^ (p >> 27)) + (p << 7);                                                                         \
+        volatile uint32 r = q ^ 0xAAAAAAAAu;                                                                                    \
+        volatile uint32 s = (r << 9) ^ (r >> 11);                                                                               \
+        volatile uint32 t = (s * 33u) ^ (s >> 15);                                                                              \
+        _dont_optimize_seed = (_dont_optimize_seed ^ t ^ static_cast<uint32>(__LINE__));                                        \
+        if (t == 0x12345678u)                                                                                                   \
+        {                                                                                                                       \
+            volatile int dummy = 0;                                                                                             \
+            ++dummy;                                                                                                            \
+        }                                                                                                                       \
+    } while (false)
 #else
 #define DONT_OPTIMIZE() ;
 #endif
@@ -155,6 +196,7 @@
 void mp_game_update_recv();
 void mp_game_update_send();
 void mp_game_draw_debug_net();
+void mp_game_draw_debug_zones();
 
 //// TODO: verify correct location for those variables (MultiGame.h)
 //extern bool gbMP_DrawPauseScreen;

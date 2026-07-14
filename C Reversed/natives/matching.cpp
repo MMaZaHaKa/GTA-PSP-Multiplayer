@@ -24,8 +24,8 @@
 #define NUM_IRON_MAN_LEG_CHANGES (1)
 
 
-inline bool hasCutSceneSynced(cMultiGame& pGame, uint8 id) {
-	return pGame.m_nMaskCutsceneSync & (1 << id);
+inline bool hasCutSceneSynced(cMultiGame& Game, uint8 id) {
+	return Game.m_nMaskCutsceneSync & BIT(id);
 }
 
 int lsn_waiter(lua_State* L) {
@@ -75,6 +75,11 @@ int mp_lsn_DbgPrintAllOptions(lua_State* L) {
 }
 
 int mp_lsn_ServerName(lua_State* L) {
+#ifdef GTA_PSP
+	sceDisplayWaitVblankStart();
+#else
+	// PC? wait end draw pixeldata, in the end coreloop
+#endif
 	cAdhoc& Adhoc = TheAdhoc;
 	base::string serverName;
 	tLobbyRemoteInfo* pInfo = Adhoc.GetMatchingInfo(MP_HOST_INDEX);
@@ -99,12 +104,12 @@ int mp_lsn_IsServer(lua_State* L) {
 }
 
 int mp_lsn_TargetPlayer(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
+	cMultiGame& Game = TheMPGame;
 	if (lua_isnumber(L, 1)) {
-		pGame.SetTargetPlayer(lua_tonumber(L, 1), true);
+		Game.SetTargetPlayer(lua_tonumber(L, 1), true);
 		return 0;
 	}
-	lua_pushnumber(L, pGame.GetTargetPlayer());
+	lua_pushnumber(L, Game.GetTargetPlayer());
 	return 1;
 }
 
@@ -119,8 +124,8 @@ int mp_lsn_GetGameSeconds(lua_State* L) {
 }
 
 int mp_lsn_UpdateGameTime(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	pGame.m_bUpdateGameTime = lua_toboolean(L, 1);
+	cMultiGame& Game = TheMPGame;
+	Game.m_bUpdateGameTime = lua_toboolean(L, 1);
 #ifdef FIX_BUGS
 	return 0;
 #else
@@ -139,11 +144,11 @@ int mp_lsn_GameTimeSeconds(lua_State* L) {
 }
 
 int mp_lsn_SetGameTime(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	int nTime = lua_tonumber(L, 1);
-	pGame.m_nTimeLimit = nTime;
-	pGame.SetTimeMinutes(nTime);
-	pGame.SetTimeSeconds(0);
+	cMultiGame& Game = TheMPGame;
+	int32 nTime = lua_tonumber(L, 1);
+	Game.m_nTimeLimit = nTime;
+	Game.SetTimeMinutes(nTime);
+	Game.SetTimeSeconds(0);
 #ifdef FIX_BUGS
 	return 0;
 #else
@@ -152,12 +157,12 @@ int mp_lsn_SetGameTime(lua_State* L) {
 }
 
 int mp_lsn_GameType(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
+	cMultiGame& Game = TheMPGame;
 	if (lua_isnumber(L, 1)) {
-		pGame.SetGameType((eGameType)lua_tonumber(L, 1));
+		Game.SetGameType((eGameType)lua_tonumber(L, 1));
 		return 0;
 	}
-	lua_pushnumber(L, (int32)pGame.GetGameType());
+	lua_pushnumber(L, (int32)Game.GetGameType());
 	return 1;
 }
 
@@ -239,29 +244,35 @@ int mp_lsn_RaceReverse(lua_State* L) {
 }
 
 int mp_lsn_RaceId(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
+	cMultiGame& Game = TheMPGame;
 	if (lua_isnumber(L, 1)) {
-		pGame.m_nScenarioOrRaceTrackID = lua_tonumber(L, 1);
+		Game.m_nScenarioOrRaceTrackID = lua_tonumber(L, 1);
 		return 0;
 	}
-	lua_pushnumber(L, pGame.m_nScenarioOrRaceTrackID);
+	lua_pushnumber(L, Game.m_nScenarioOrRaceTrackID);
 	return 1;
 }
 
 int mp_lsn_RaceCar(lua_State* L) {
-	lua_pushnumber(L, TheMPGame.m_nRaceCarID);
+	cMultiGame& Game = TheMPGame;
+#ifndef GTA_LIBERTY
+	if ((Game.GetGameType() == eGameType::MULTIRACE) && (Game.GetCTFScoreLimit() == 2))
+		lua_pushnumber(L, MI_JETSKI);
+	else
+#endif
+		lua_pushnumber(L, Game.m_nRaceCarID);
 	return 1;
 }
 
 #ifndef GTA_LIBERTY
 int mp_lsn_IsIronManRace(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	lua_pushboolean(L, (pGame.GetGameType() == eGameType::MULTIRACE && pGame.GetGameLocation() == eGameLocation::WASHINGTON_BEACH_ZON));
+	cMultiGame& Game = TheMPGame;
+	lua_pushboolean(L, (Game.GetGameType() == eGameType::MULTIRACE && Game.GetCTFScoreLimit() == 1));
 	return 1;
 }
 int mp_lsn_IsJetskiRace(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	lua_pushboolean(L, (pGame.GetGameType() == eGameType::MULTIRACE && pGame.GetGameLocation() == eGameLocation::OCEAN_BEACH_ZON));
+	cMultiGame& Game = TheMPGame;
+	lua_pushboolean(L, (Game.GetGameType() == eGameType::MULTIRACE && Game.GetCTFScoreLimit() == 2));
 	return 1;
 }
 int mp_lsn_NumIronManLegChanges(lua_State* L) {
@@ -278,6 +289,7 @@ int mp_lsn_TankModel(lua_State* L) {
 #ifndef GTA_LIBERTY
 int mp_lsn_HunterModel(lua_State* L) {
 #ifdef FIX_BUGS
+	assert(TheMPGame.m_nHunterModelID == MI_HUNTER);
 	lua_pushnumber(L, TheMPGame.m_nHunterModelID); // did they forget about this field ?
 #else
 	lua_pushnumber(L, MI_HUNTER);
@@ -306,8 +318,8 @@ int mp_lsn_TeamName(lua_State* L) {
 
 #ifndef GTA_LIBERTY
 int mp_lsn_VipTeam(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	lua_pushnumber(L, pGame.bIsVipTeamTeam2);
+	cMultiGame& Game = TheMPGame;
+	lua_pushnumber(L, Game.bIsVipTeamTeam2);
 	return 1;
 }
 #endif
@@ -335,22 +347,22 @@ int mp_lsn_StartGame(lua_State* L) {
 }
 
 int mp_lsn_DefendingTeam(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
+	cMultiGame& Game = TheMPGame;
 	if (lua_isnumber(L, 1)) {
-		pGame.SetDefendingTeamID(lua_tonumber(L, 1));
+		Game.SetDefendingTeamID(lua_tonumber(L, 1));
 		return 0;
 	}
-	lua_pushnumber(L, pGame.GetDefendingTeamID());
+	lua_pushnumber(L, Game.GetDefendingTeamID());
 	return 1;
 }
 
 int mp_lsn_ShowingCommentary(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
+	cMultiGame& Game = TheMPGame;
 	if (lua_isboolean(L, 1)) {
-		pGame.m_bShowingCommentary = lua_toboolean(L, 1);
+		Game.m_bShowingCommentary = lua_toboolean(L, 1);
 		return 0;
 	}
-	lua_pushboolean(L, pGame.m_bShowingCommentary);
+	lua_pushboolean(L, Game.m_bShowingCommentary);
 	return 1;
 }
 
@@ -394,9 +406,9 @@ int mp_lsn_NetPacketLoss(lua_State* L) {
 
 
 int mp_lsn_Multilag(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	if (lua_gettop(L)) pGame.m_nLagValue = luaL_checknumber(L, 1);
-	lua_pushnumber(L, pGame.m_nLagValue);
+	cMultiGame& Game = TheMPGame;
+	if (lua_gettop(L)) Game.m_nLagValue = luaL_checknumber(L, 1);
+	lua_pushnumber(L, Game.m_nLagValue);
 	return 1;
 }
 
@@ -407,8 +419,12 @@ int mp_lsn_WaitFunc(lua_State* L) {
 	uint16 nCurTime = TheMPGame.m_pNetSession->m_nCurTime;
 	float fWaitTime = lua_tonumber(L, 1);
 	lua_pushnumber(L, nCurTime + (fWaitTime * 0.06f));
-	lua_pushcclosure(L, lsn_waiter, 1);
-	return 1;
+	lua_pushcclosure(L, lsn_waiter, 1); // https://www.lua.org/pil/27.3.3.html
+#ifdef GTA_LIBERTY
+	return 1; // closure, probably bug in lcs
+#else
+	return 2; // closure + time
+#endif
 }
 
 int mp_lsn_Wait(lua_State* L) {
@@ -419,7 +435,15 @@ int mp_lsn_Wait(lua_State* L) {
 int mp_lsn_FindGroundZFor3DCoord(lua_State* L) {
 	CVector pos;
 	lsc_getVectorFromStack(pos, L, 1, true);
-	float posZ = CWorld::FindGroundZFor3DCoord(pos.x, pos.y, pos.z, NULL);
+#ifdef GTA_LIBERTY
+	float posZ = CWorld::FindGroundZFor3DCoord(pos.x, pos.y, pos.z, nil);
+#else
+	bool bPosZNotFound = lua_isboolean(L, 2) ? lua_toboolean(L, 2) : true;
+	bool bFound = false;
+	float posZ = CWorld::FindGroundZFor3DCoord(pos.x, pos.y, pos.z, &bFound);
+	if (!bFound)
+		posZ = bPosZNotFound ? pos.z : 10000.0f;
+#endif
 	lua_pushnumber(L, posZ);
 	return 1;
 }
@@ -484,24 +508,24 @@ int mp_lsn_UseSuperBrakeOnPause(lua_State* L) {
 }
 
 int mp_lsn_syncCutscene(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	if (CTimer::GetTimeInMilliseconds() - pGame.GetCurTime() >= 5000) {
+	cMultiGame& Game = TheMPGame;
+	if (CTimer::GetTimeInMilliseconds() - Game.GetCurTime() >= 5000) {
 		debug("***** Cutscene Sync Time Out !!!\n");
 		lua_pushboolean(L, true);
 		return 1;
 	}
-	if (!hasCutSceneSynced(pGame, pGame.m_pNetSession->m_nSelfPeerID)) {
+	if (!hasCutSceneSynced(Game, Game.LocalPlayerID())) {
 		debug("Sending cutscene msg\n");
 		net::pckt_msg_ready_for_cutscene packet;
 		packet.pckt_size = sizeof(net::pckt_msg_ready_for_cutscene);
 		packet.pckt_id = gtMP_PacketIDs.msg_ready_for_cutscene.pckt_id;
-		pGame.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
-		pGame.SetCutscenePlaying(pGame.LocalPlayerID());
+		Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
+		Game.SetCutscenePlaying(Game.LocalPlayerID());
 	}
-	int nPlayers = TheAdhoc.GetNumberOfConnectedPlayers();
-	debug("***** Peers Ready Mask == 0x%x\n", pGame.m_nMaskCutsceneSync);
-	for (int id = 0; id < nPlayers; id++) {
-		if (hasCutSceneSynced(pGame, id))
+	int32 nPlayers = TheAdhoc.GetNumberOfConnectedPlayers();
+	debug("***** Peers Ready Mask == 0x%x\n", Game.m_nMaskCutsceneSync);
+	for (int32 id = 0; id < nPlayers; id++) {
+		if (hasCutSceneSynced(Game, id))
 			continue;
 		lua_pushboolean(L, false);
 		return 1;
@@ -533,7 +557,7 @@ int mp_lsn_PrintAllPeerGroups(lua_State* L) {
 
 int mp_lsn_CreateAndSyncPeerGroup(lua_State* L) {
 	cMultiGame& Game = TheMPGame;
-	int32 group = lua_tonumber(L, 1);
+	uint8 group = lua_tonumber(L, 1);
 	uint8 mask = lua_tonumber(L, 2);
 	net::pckt_sync_peer_group packet;
 	packet.pckt_size = sizeof(net::pckt_sync_peer_group);
@@ -552,11 +576,12 @@ int mp_lsn_CreateAndSyncEveryoneExceptMePeerGroup(lua_State* L) {
 	uint8 mask = 0xFF;
 	for (int32 i = 0; i < PeerMgr.m_vPlayers.size(); ++i) {
 		sPeerState* peer = PeerMgr.GetPeerAt(i);
-		if (peer->m_nID == Game.LocalPlayerID()) continue;
-		if (!PeerMgr.IsPeerConnected(peer->m_nID)) continue;
-		if (peer->m_nID >= MP_MAX_NUM_PEERS)
-			assert(false && "if (peer->m_nID >= MP_MAX_NUM_PEERS)");
-		mask &= ~(1 << (peer->m_nID & 0x1F));
+		if (peer->m_nID != Game.LocalPlayerID() && PeerMgr.IsPeerConnected(peer->m_nID)) continue;
+		if (peer->m_nID > MP_NUM_PEERS)
+			assert(false && "bitset");
+		//mask &= ~BIT((peer->m_nID & 0x1F));
+		//mask &= ~BIT(ldb(0, MP_NUM_PEERS - 2, peer->m_nID));
+		mask &= ~BIT( (peer->m_nID & (BIT(MP_NUM_PEERS - 2) - 1)) ); // -2(-1 num to lastmax, -1 local) -1(normalize)
 	}
 	net::pckt_sync_peer_group packet;
 	packet.pckt_size = sizeof(net::pckt_sync_peer_group);
@@ -577,7 +602,6 @@ int mp_lsn_GetDiskPrepend(lua_State* L) {
 		lua_pushstring(L, PSP_USERDIR);
 #else
 	lua_pushstring(L, "./");
-	TODO(); // test
 #endif
 	return 1;
 }
@@ -599,7 +623,7 @@ int mp_lsn_SetEmpireSiteType(lua_State* L) {
 }
 
 int mp_lsn_CreateLuaObject(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
+	cMultiGame& Game = TheMPGame;
 	if (!lua_isnumber(L, 1))
 		return 0;
 
@@ -610,7 +634,7 @@ int mp_lsn_CreateLuaObject(lua_State* L) {
 	if (!TheAdhoc.IsHost())
 		return 0;
 
-	pGame.CreateLuaObject(objectId, objectPos);
+	Game.CreateLuaObject(objectId, objectPos);
 	net::pckt_msg_create_lua_object packet{};
 	packet.pckt_size = sizeof(net::pckt_msg_create_lua_object);
 	packet.pckt_id = gtMP_PacketIDs.msg_create_lua_object.pckt_id;
@@ -618,7 +642,7 @@ int mp_lsn_CreateLuaObject(lua_State* L) {
 	packet.isDestroy = false;
 	packet.object_id = objectId;
 	packet.pos = objectPos;
-	pGame.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
+	Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
 	return 0;
 }
 
@@ -639,7 +663,7 @@ int mp_lsn_DestroyLuaObject(lua_State* L) {
 
 int mp_lsn_UpdatePad(lua_State* L) {
 	CPad* pad = GetPadFromPlayer(FindPlayerPed());
-	if (pad) pad->Update(0);
+	if (pad) pad->Update(PAD1);
 	return 0;
 }
 

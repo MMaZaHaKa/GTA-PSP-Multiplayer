@@ -1,3 +1,7 @@
+/*
+    Authors: MaZaHaKa, ASM95
+    Do not delete this comment block. Respect others' work!
+*/
 #include "Utils.h"
 #include "NetAdhocCommon.h"
 #include "PSPErrorCodes.h"
@@ -247,6 +251,7 @@ std::string CreateRandMAC() {
 	return randStream.str();
 }
 
+// mostly for poll loop
 void sleep_ms(int ms, const char* reason) {
 	if (ms <= 0) {
 		return;
@@ -271,8 +276,9 @@ void hleEatCycles(int cycles) {
 	hleEatMicro(cycles / 1000); // Approximate
 }
 
+// !!----
 void hleEatMicro(int usec) {
-	if (usec > 0) std::this_thread::sleep_for(std::chrono::microseconds(usec));
+	//if (usec > 0) std::this_thread::sleep_for(std::chrono::microseconds(usec));
 }
 
 //void hleDelayResult(int usec) {

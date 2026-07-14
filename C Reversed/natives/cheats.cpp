@@ -17,8 +17,8 @@
 
 
 int mp_lsn_cheatweapons(lua_State* L) {
-	CPlayerPed* pPed = FindPlayerPed();
 	TheHud->SetHelpMessage(TheText.Get("CHEAT2"), true);
+	CPlayerPed* pPed = FindPlayerPed();
 #ifdef FIX_BUGS // fix from WeaponCheat1()
 	CStreaming::RequestModel(MI_BASEBALL_BAT, STREAMFLAGS_DONT_REMOVE);
 	CStreaming::RequestModel(MI_COLT45, STREAMFLAGS_DONT_REMOVE);
@@ -75,8 +75,12 @@ int mp_lsn_cheathealth(lua_State* L) {
 	FindPlayerPed()->m_fHealth = 100.0f;
 	CVehicle* pVeh = FindPlayerVehicle();
 	if (pVeh) {
+#if !defined(GTA_LIBERTY) && defined(FIX_BUGS)
+		pVeh->m_fHealth = pVeh->m_fMaxHealth;
+#else
 		pVeh->m_fHealth = 1000.0f;
-		if (pVeh->m_vehType == VEHICLE_TYPE_CAR)
+#endif
+		if (pVeh->IsCar())
 			((CAutomobile*)pVeh)->Damage.SetEngineStatus(0);
 	}
 	return 0;
@@ -85,7 +89,7 @@ int mp_lsn_cheathealth(lua_State* L) {
 int mp_lsn_cheatwanted(lua_State* L) {
 	TheHud->SetHelpMessage(TheText.Get("CHEAT5"), true);
 	CPlayerPed* pPed = FindPlayerPed();
-	pPed->m_pWanted->CheatWantedLevel(Min(pPed->m_pWanted->GetWantedLevel() + 2, 6));
+	pPed->m_Wanted.CheatWantedLevel(Min(pPed->m_Wanted.GetWantedLevel() + 2, 6));
 	return 0;
 }
 

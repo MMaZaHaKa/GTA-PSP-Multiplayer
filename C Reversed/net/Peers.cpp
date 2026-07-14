@@ -6,6 +6,11 @@
 #include "multiplayer/MultiGame.h"
 #include "multiplayer/net/emu/Utils.h"
 #include "Font.h" // debug
+#ifndef GTA_PSP
+#include "multiplayer/net/emu/NetAdhocCommon.h"
+#include "multiplayer/net/emu/proAdhoc.h"
+#include "multiplayer/net/emu/sceNet.h"
+#endif
 
 #ifndef GTA_LIBERTY
 sPeerState::sPeerState(int32 id, tListenAddr& addr) {
@@ -24,6 +29,27 @@ sPeerState::sPeerState(int32 id, tListenAddr& addr) {
 	m_nTimeA = 0;
 	m_nTimeB = 0;
 	m_vElements = std::map<uint16, sElement*>();
+#ifdef GTA_PSP
+	bVanilaDevice = true;
+#else
+	bool bLocal = false;
+	m_pProAdhocPeer = getPeerInfo(addr.mac.GetBytesProAdhoc(), &bLocal);
+	if(bLocal)
+		debug("PLAYER sPeerState!\n");
+
+	//if (id == cMultiGame::Instance().LocalPlayerID()) {
+	//	m_pProAdhocPeer = findSelf();
+	//	debug("PLAYER sPeerState!\n");
+	//}
+	//else
+	//	m_pProAdhocPeer = findFriend(addr.mac.GetBytesProAdhoc());
+	assert(m_pProAdhocPeer);
+#ifdef ADHOCCTL_USE_CUSTOM_IDENT
+	bVanilaDevice = ((m_pProAdhocPeer->flags & ADHOCCTL_CUSTOM_FLAG) == 0);
+#else
+	bVanilaDevice = false;
+#endif
+#endif
 }
 
 sPeerState::~sPeerState() {
@@ -110,18 +136,25 @@ void cPeerManager::ConnectPeer(uint8 id, tListenAddr& addr)
 {
 	cMultiGame& Game = cMultiGame::Instance();
 	sPeerState* pPeer = nil;
+#ifdef MP_USE_CUSTOM_ALLOCATOR
 	if (m_pAllocFunc) {
 		pPeer = (sPeerState*)(m_pAllocFunc(sizeof(sPeerState)));
 		if (pPeer) new (pPeer) sPeerState(id, addr);
 	}
-	else {
+	else
+#endif
 		pPeer = new sPeerState(id, addr);
-	}
 	assert(pPeer);
 	m_vPlayers.push_back(pPeer);
 	Game.m_pNetSession->CreatePeerGroup(id);
 	Game.m_pNetSession->RegisterGroupPeer(BROADCAST_PEER_GROUPID, id);
-	Game.m_pNetSession->RegisterGroupPeer(id, id);
+	Game.m_pNetSession->RegisterGroupPeer(id, id); // register group as peer id, for send packet to peer -> group
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+	if(pPeer->bVanilaDevice)
+		Game.m_pNetSession->RegisterGroupPeer(BROADCAST_VANILLA_DEVICE_GROUPID, id);
+	else
+		Game.m_pNetSession->RegisterGroupPeer(BROADCAST_CUSTOM_DEVICE_GROUPID, id);
+#endif
 }
 
 void cPeerManager::DeletePeer(uint8 id)
@@ -159,13 +192,13 @@ sPeerState* cPeerManager::GetSelfPeer()
 	return GetPeerById(TheMPGame.LocalPlayerID());
 }
 
-sPeerState* cPeerManager::GetPeerAt(uint8 nPeerID)
+sPeerState* cPeerManager::GetPeerAt(uint8 nIndex)
 {
 	int32 busyIdx = 0;
 	for (int32 i = 0; i < m_vPlayers.size(); ++i) {
 		sPeerState* pPeer = m_vPlayers[i];
 		if (pPeer != nil) {
-			if (busyIdx == nPeerID)
+			if (busyIdx == nIndex)
 				return pPeer;
 			++busyIdx;
 		}
@@ -250,9 +283,9 @@ sPeerState* cPeerManager::GetLastPeer() // ?
 void cPeerManager::SetTeamPeerGroupIds()
 {
 	cMultiGame& Game = cMultiGame::Instance();
-	m_nTeamAPeerGroupId = Game.m_pNetSession->CreatePeerGroup(-2);
-	m_nTeamBPeerGroupId = Game.m_pNetSession->CreatePeerGroup(-3);
-	assert(m_nTeamAPeerGroupId == -2 && m_nTeamBPeerGroupId == -3);
+	m_nTeamAPeerGroupId = Game.m_pNetSession->CreatePeerGroup(BROADCAST_TEAM_A_GROUPID);
+	m_nTeamBPeerGroupId = Game.m_pNetSession->CreatePeerGroup(BROADCAST_TEAM_B_GROUPID);
+	assert(m_nTeamAPeerGroupId == BROADCAST_TEAM_A_GROUPID && m_nTeamBPeerGroupId == BROADCAST_TEAM_B_GROUPID);
 }
 
 void cPeerManager::UpdateTeamPeerGroups()
@@ -265,7 +298,8 @@ void cPeerManager::UpdateTeamPeerGroup(uint8 teamId, int32 groupId)
 {
 	cMultiGame& Game = cMultiGame::Instance();
 	for (uint32 i = 0; i < m_vPlayers.size(); i++) {
-		sPeerState* peer = GetPeerById(i);
+		sPeerState* peer = GetPeerById(i); // index as id? kek
+		assert(peer);
 		if (Game.GetPlayerTeamID(peer->m_nID) == teamId)
 		{
 			if (!Game.m_pNetSession->IsSameGroup(groupId, peer->m_nID))

@@ -18,16 +18,16 @@ struct tZonePeer
 	//uint8 pad1[3];
 	std::vector<uint16> acks; // Acknowledgment
 	int32 field_10;
-	uint32 nSeqBitmask;
-	uint32 nExpectedSeqMask;
-	int32 field_1C;
-	int32 field_20;
-	int32 field_24;
-	int32 field_28;
+	int32 field_14;// v1
+	int32 field_18;//
+	int32 field_1C;//
+	int32 field_20; // v2
+	int32 field_24; //
+	int32 field_28; //
 	uint16 nBasis;
 	uint16 nState;
-	int32 field_30;
-	int32 field_34;
+	uint32 nSeqBitmask;
+	uint32 nExpectedSeqMask;
 };
 //static_assert(sizeof(tZonePeer) == 0x38, "sizeof(tZonePeer)");
 
@@ -56,6 +56,9 @@ public:
 	int16 m_nID;
 	//int8 m_pad1[2];
 	uint32 m_nCurTime; // using also for m_nCurTime += stream.pckt_size cInterestZone::SendGameState()
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+	uint32 m_nCurTimeCustom; // using also for m_nCurTime += stream.pckt_size cInterestZone::SendGameState()
+#endif
 	bool m_bHasPos;
 #ifdef GTA_LIBERTY
 	int16 m_nPosX;
@@ -132,6 +135,7 @@ public:
 	void UpdatePlayer();
 #endif
 
+	inline std::map<uint16, cInterestZone*>& GetZones() { return m_vZones; }
 	inline cInterestZone* FindZone(uint16 nID) {
 		auto it = m_vZones.find(nID);
 		if (it != m_vZones.end())

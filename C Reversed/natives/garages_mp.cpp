@@ -30,7 +30,7 @@ int mp_lsn_SetVehicleForGarage(lua_State* L) {
 	int32 nPlayerID = lua_tonumber(L, 1);
 	int32 nHandle = lua_tonumber(L, 2);
 	sElementPhysical* pEntity = (sElementPhysical*)lsc_get_entity(L, 3);
-	if (pEntity && nHandle >= 0) CGarages::SetVehicleForSSGarage(nPlayerID, nHandle, pEntity);
+	if (pEntity && nHandle >= 0) CGarages::SetVehicleForSSGarage(nPlayerID, nHandle, (sVehicle*)pEntity);
 	return 0;
 }
 
@@ -59,7 +59,7 @@ int mp_lsn_SetPlayersVehicleForGarage(lua_State* L) {
 			pEntry = (sElementPhysical*)Game.GetEntityForHandle(pPed->GetOwner(), nVehicleID);
 #endif
 	}
-	if (pEntry && nHandle >= 0) CGarages::SetVehicleForSSGarage(nPlayerID, nHandle, pEntry);
+	if (pEntry && nHandle >= 0) CGarages::SetVehicleForSSGarage(nPlayerID, nHandle, (sVehicle*)pEntry);
 	return 0;
 }
 

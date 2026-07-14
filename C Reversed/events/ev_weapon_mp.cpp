@@ -53,13 +53,20 @@ void on_recv_fire_instant_hit(net::pckt_fire_instant_hit& packet, int sender, ui
 	}
 	sElementPhysical* pElemShooter = (sElementPhysical*)Game.GetEntityForHandle(sender, packet.shooter_id);
 	if (pElemShooter != nil) { // stupid twice call GetEntityForHandle
-		// TODO
-		//FireInstantHitParticles(packet.weapon_type, &vSource, &vTarget, packet.firing_rate, pElemShooter->GetPhysical(), packet.move_speed, pPacket->flags & 1, (pPacket->flags & 2) != 0i64);
+		CVector vSource = packet.fire_source;
+		CVector vTarget = packet.target;
+		CVector2D vMoveSpeed = CVector2D(packet.move_speed.x, packet.move_speed.y);
+		FireInstantHitParticles(
+			(eWeaponType)packet.weapon_type,
+			&vSource,
+			&vTarget,
+			packet.firing_rate,
+			pElemShooter->GetPhysical(),
+			&vMoveSpeed,
+			packet.changed_heading,
+			packet.shooter_moving
+		);
 	}
-
-	MULTIGAME_UNIMPLEMENTED_EVENT(); // FireInstantHitParticles
-	MULTIGAME_UNIMPLEMENTED_EVENT();
-	MULTIGAME_UNIMPLEMENTED_EVENT();
 }
 
 void on_recv_fire_sniper(net::pckt_fire_sniper& packet, int sender, uint16 time, bool bFromRing) // ID 30
@@ -80,16 +87,21 @@ void on_recv_fire_sniper(net::pckt_fire_sniper& packet, int sender, uint16 time,
 		CBulletInfo::AddBullet(pElemShooter->GetPhysical(), (eWeaponType)packet.weapon_type, packet.fire_source, packet.target, bHasQuadDamage);
 	}
 
+	CVector vTarget = packet.target;
 	CWeaponInfo* weaponInfo = CWeaponInfo::GetWeaponInfo(WEAPONTYPE_SNIPERRIFLE);
-	CVector vecStart = packet.target * 0.1f;
-	//FireInstantHitParticles(WEAPONTYPE_SNIPERRIFLE, ..., weaponInfo->m_nFiringRate, pPhyMG, pPhyMG->m_vecMoveSpeed, 0, 0); // TODO
+	CVector vSource = packet.fire_source + (packet.target * 0.1f);
+	assert(pPhyMG);
+	CVector2D vMoveSpeed2D = CVector2D(pPhyMG->m_vecMoveSpeed.x, pPhyMG->m_vecMoveSpeed.y);
 
-	TODO();
-	MULTIGAME_UNIMPLEMENTED(); // FireInstantHitParticles
-	MULTIGAME_UNIMPLEMENTED();
-	MULTIGAME_UNIMPLEMENTED();
-	MULTIGAME_UNIMPLEMENTED();
-
+	FireInstantHitParticles(
+		eWeaponType::WEAPONTYPE_SNIPERRIFLE,
+		&vSource,
+		&vTarget,
+		weaponInfo->m_nFiringRate,
+		pPhyMG,
+		&vMoveSpeed2D,
+		false,
+		false);
 }
 
 void on_recv_fire_shotgun(net::pckt_fire_shotgun& packet, int sender, uint16 time, bool bFromRing) // ID 31

@@ -23,12 +23,16 @@
 #include "MultiGame.h"
 #include "multiplayer/LScript.h"
 #include "multiplayer/Logger.h"
+#include "multiplayer/events/public.h"
+#ifndef GTA_PSP
 #include "multiplayer/net/emu/proAdhoc.h"
 #include "multiplayer/net/emu/Resolve.h"
 #include "multiplayer/net/emu/sceNetAdhocMatching.h"
 #include "multiplayer/net/emu/Utils.h"
+#endif
 
 #include <algorithm>
+#include <sstream>
 
 cGameChat gChat;
 
@@ -215,17 +219,46 @@ void OnSpawn(std::string arg) {
 		return;
 
 	int32 modelIndex = -1;
-	CBaseModelInfo* mi = CModelInfo::GetModelInfo(arg.c_str(), &modelIndex);
-	if(!mi)
+	const char* name = arg.c_str();
+	CBaseModelInfo* mi = CModelInfo::GetModelInfo(name, &modelIndex);
+	if (!mi) { // name is index
 		modelIndex = stoi(arg);
+		mi = CModelInfo::GetModelInfo(modelIndex);
+		if (mi)
+			name = mi->GetModelName();
+		else
+			name = "Not Found";
+	}
 	if (modelIndex >= MI_FIRST_VEHICLE && modelIndex <= MI_LAST_VEHICLE)
 		SpawnCar(modelIndex);
 	else if (modelIndex >= MI_PLAYER && modelIndex <= MI_LAST_PED)
 		SpawnPed(modelIndex, ePedType::PEDTYPE_CIVMALE);
+	else
+		SpawnObject(modelIndex);
 	char buff[64];
-	sprintf(buff, "Spawned: %s (%d)", arg.c_str(), modelIndex);
+	sprintf(buff, "Spawned: %s (%d)", name, modelIndex);
 	DebugHudMsg(buff);
 	gChat.Close();
+}
+
+void OnModel(std::string arg) {
+	if (arg.size() == 0)
+		return;
+
+	int32 modelIndex = -1;
+	const char* name = arg.c_str();
+	CBaseModelInfo* mi = CModelInfo::GetModelInfo(name, &modelIndex);
+	if (!mi) { // name is index
+		modelIndex = stoi(arg);
+		mi = CModelInfo::GetModelInfo(modelIndex);
+		if (mi)
+			name = mi->GetModelName();
+		else
+			name = "Not Found";
+	}
+	char buff[64];
+	sprintf(buff, "ModelInfo: %s (%d)", name, modelIndex);
+	DebugHudMsg(buff);
 }
 
 void OnMission(std::string arg) {
@@ -283,8 +316,39 @@ void OnMission(std::string arg) {
 	}
 }
 
+void OnKick(std::string arg) {
+	if (arg.size() == 0)
+		return;
+
+	if(TheAdhoc.IsHost()) // pls
+		MultigameKickPlayer(stoi(arg));
+}
+
 void OnQuit(std::string arg) {
 	ExitProcess(0);
+}
+
+void OnTeleport(std::string arg) {
+	CVector pos(0.0f, 0.0f, 0.0f);
+	std::replace(arg.begin(), arg.end(), ',', '.');
+	for (char& c : arg) {
+		if (c == ';' || c == '\t') {
+			c = ' ';
+		}
+	}
+
+	std::istringstream iss(arg);
+	float x, y, z;
+
+	if (iss >> x >> y >> z) {
+		char remaining;
+		if (!(iss >> remaining)) {
+			pos = CVector(x, y, z);
+		}
+	}
+
+	if (FindPlayerPed())
+		FindPlayerPed()->Teleport(pos);
 }
 
 void OnMenu(std::string arg) {
@@ -390,6 +454,8 @@ void cGameChat::Initialise() {
 	RegisterConCommandBase(lan);
 	ConCommandBase night("night", "night", &OnNight, 0);
 	RegisterConCommandBase(night);
+	ConCommandBase kick("kick", "kick", &OnKick, 0);
+	RegisterConCommandBase(kick);
 	ConCommandBase journal("journal", "journal", &OnJournal, 0);
 	RegisterConCommandBase(journal);
 	m_bIsOpen = false;
@@ -399,10 +465,14 @@ void cGameChat::Initialise() {
 	// SP
 	ConCommandBase spawn("spawn", "spawner", &OnSpawn, 0);
 	RegisterConCommandBase(spawn);
+	ConCommandBase mi("mi", "minfo", &OnModel, 0);
+	RegisterConCommandBase(mi);
 	ConCommandBase mission("mission", "mission", &OnMission, 0);
 	RegisterConCommandBase(mission);
 	ConCommandBase quit("q", "quit", &OnQuit, 0);
 	RegisterConCommandBase(quit);
+	ConCommandBase teleport("tp", "teleport", &OnTeleport, 0);
+	RegisterConCommandBase(teleport);
 	ConCommandBase menu("menu", "menu", &OnMenu, 0);
 	RegisterConCommandBase(menu);
 	ConCommandBase test("test", "test", &OnTest, 0);

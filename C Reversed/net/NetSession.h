@@ -12,6 +12,7 @@
 
 #include <vector>
 
+#define NET_SESSION_DEFAULT_HOST_ID				    (0)
 #define NET_SESSION_DEFAULT_PORT					(1)
 #define NET_SESSION_TIME_SCALE						((65535 + 1) * 60) // todo ms s conv?
 #define NET_SESSION_NUM_PACKETS						(48)
@@ -269,7 +270,7 @@ struct cSendQeue {
 	int16 m_nForceQueueID;
 	std::vector<uint8> m_vecPacketBuffer;
 	std::vector<uint8> m_vecPacketBufferPrio;
-	std::vector<int32> m_vecPeerList;
+	std::vector<int32> m_vecPeerList; // peers id's in this group
 
 	inline cSendQeue() {
 #if !defined(GTA_LIBERTY) && defined(FIX_BUGS)

@@ -5,6 +5,7 @@
 #include "common.h"
 #include "ModelIndices.h"
 #include "Camera.h"
+#include "Radar.h"
 
 #include "multiplayer/MultiGame.h"
 #include "multiplayer/natives/public.h"
@@ -59,7 +60,7 @@ void lsc_getVectorFromStackNoEntity(CVector& vec, lua_State* L, int index) {
 		lua_settop(L, -4);
 	}
 	else {
-		float fValue = luaL_checknumber(L, -1);
+		float fValue = luaL_checknumber(L, index);
 		vec = CVector(fValue, fValue, fValue);
 	}
 }
@@ -75,7 +76,7 @@ void lsc_pushVector3D(lua_State* L, float x, float y, float z) {
 }
 
 void lsc_pushVuVector(lua_State* L, CVector& vec) {
-	return lsc_pushVector3D(L, vec.x, vec.y, vec.z);
+	lsc_pushVector3D(L, vec.x, vec.y, vec.z);
 }
 
 bool lsc_isPlayerUserData(lua_State* L, int index) {
@@ -85,7 +86,7 @@ bool lsc_isPlayerUserData(lua_State* L, int index) {
 /* unsure: returns the peer ID */
 int32 lsc_getPlayer(lua_State* L, int index) {
 	void* pData = luaL_checkudata(L, index, "PlayerId");
-	return (pData != nil) ? (*(int*)pData) : -1;
+	return (pData != nil) ? (*(int32*)pData) : -1;
 }
 
 int32 lsc_getPlayerSafety(lua_State* L, int index) {
@@ -95,50 +96,50 @@ int32 lsc_getPlayerSafety(lua_State* L, int index) {
 	return nPlayerID;
 }
 
-
+// return packed handle
 inline uint32 lsc_unpack_entity(lua_State* L, int index) {
 	return ((uint32)lua_touserdata(L, index));
 }
 
 bool lsc_is_entity_tracked(lua_State* L, int index) {
 	if (lua_islightuserdata(L, index)) {
-		uint32 nValue = lsc_unpack_entity(L, index);
-		return (nValue & TRACKED_ENTITY_TYPE_MASK) == TRACKED_ENTITY_TYPE;
+		uint32 nHandle = lsc_unpack_entity(L, index);
+		return TRACKED_ENTITY_TRACK(nHandle);
 	}
 	return false;
 }
 
 uint32 lsc_get_tracked_entity(lua_State* L, int index) {
-	uint32 nValue = lsc_unpack_entity(L, index);
+	uint32 nHandle = lsc_unpack_entity(L, index);
 	luaL_getmetatable(L, "EntityTrack");
 	if (!lua_isnil(L, -1)) {
 		lua_pushvalue(L, index);
 		lua_gettable(L, -2);
 		if (!lua_isnil(L, -1)) {
-			nValue = lsc_unpack_entity(L, -1);
+			nHandle = lsc_unpack_entity(L, -1);
 		}
 		lua_pop(L, 2); // lua_settop(L, -3);
 	}
 	else {
 		lua_pop(L, 1); // lua_settop(L, -2);
 	}
-	return nValue;
+	return nHandle;
 }
 
-void mp_lsc_transfer_entity(int nKeyOwner, int nKeyID, int nOwner, int nID)
+void lsc_transfer_tracked_entity(int32 nFromOwner, uint16 nFromID, int32 nToOwner, uint16 nToID)
 {
 	lua_State* L = cLWrapper::Instance().m_luaVM;
 	luaL_getmetatable(L, "EntityTrack");
 	if (!lua_isnil(L, -1)) {
-		uint32 nOldData = ((uint32_t)nKeyOwner << 16) | TRACKED_ENTITY_TYPE | nKeyID; // handle
-		uint32 nNewData = ((uint32_t)nOwner << 16) | TRACKED_ENTITY_TYPE | nID; // handle
+		uint32 nFromHandle = TRACKED_ENTITY_PACK(nFromOwner, nFromID);
+		uint32 nNewToHandle = TRACKED_ENTITY_PACK(nToOwner, nToID);
 		lua_pushnil(L);
 		while (lua_next(L, -2)) {
 			// stack: ... table(-3), key(-2 light oldKey), value(-1 light oldHandle)
-			if (lsc_unpack_entity(L, -1) == nOldData) {
+			if (lsc_unpack_entity(L, -1) == nFromHandle) {
 				uint32 nInfo = (uint32)lua_touserdata(L, -2);
 				lua_pop(L, 1); // lua_settop(L, -2);
-				lua_pushlightuserdata(L, (void*)nNewData);
+				lua_pushlightuserdata(L, (void*)nNewToHandle);
 				lua_settable(L, -3);
 				lua_pushlightuserdata(L, (void*)nInfo);
 			}
@@ -150,13 +151,13 @@ void mp_lsc_transfer_entity(int nKeyOwner, int nKeyID, int nOwner, int nID)
 	lua_pop(L, 1); // lua_settop(L, -2);
 }
 
-void lsc_register_entity(lua_State* L, sElement* pElem) {
-	uint32 nData = (pElem->GetOwner() << 16) | TRACKED_ENTITY_TYPE | pElem->GetID();
-	lua_pushlightuserdata(L, (void*)nData);
+void lsc_register_tracked_entity(lua_State* L, sElement* pElem) {
+	uint32 nHandle = TRACKED_ENTITY_PACK(pElem->GetOwner(), pElem->GetID());
+	lua_pushlightuserdata(L, (void*)nHandle);
 	luaL_getmetatable(L, "EntityTrack");
-	if (lua_isnil(L, -1)) {
-		lua_pop(L, 1); // lua_settop(L, -2);
-		luaL_newmetatable(L, "EntityTrack");
+	if (lua_isnil(L, -1)) { // if it's nil
+		lua_pop(L, 1); // lua_settop(L, -2); // pop last element from stack
+		luaL_newmetatable(L, "EntityTrack"); // create metatable
 		lua_pushstring(L, "__mode");
 		lua_pushstring(L, "k");
 		lua_rawset(L, -3); // EntityTrack["_mode"] = "k"
@@ -164,39 +165,22 @@ void lsc_register_entity(lua_State* L, sElement* pElem) {
 	lua_pushvalue(L, -2);
 	lua_pushvalue(L, -1);
 	lua_settable(L, -3); // EntityTrack[udata] = udata
-	lua_setmetatable(L, -2);
+	lua_setmetatable(L, -2); // pops EntityTrack and sets as metatable of light user data
 }
 
 sElement* lsc_get_entity(lua_State* L, int index) {
 	cMultiGame& Game = cMultiGame::Instance();
 	sElement* pElement = nil;
 	if (lsc_is_entity_tracked(L, index)) {
-		uint32 nInfo = lsc_get_tracked_entity(L, index);
-		pElement = Game.GetEntityForHandle((nInfo & TRACKED_ENTITY_OWNER_MASK), (nInfo & TRACKED_ENTITY_ID_MASK));
+		uint32 nHandle = lsc_get_tracked_entity(L, index);
+		pElement = Game.GetEntityForHandle(TRACKED_ENTITY_OWNER(nHandle), TRACKED_ENTITY_ID(nHandle));
 	}
 	else if (lsc_isPlayerUserData(L, index)) {
-		int nPlayerID = lsc_getPlayer(L, index);
+		int32 nPlayerID = lsc_getPlayer(L, index);
 		pElement = Game.GetEntityForHandle(nPlayerID, eElementID::MG_ELEMENT_PLAYER_ID);
 	}
 	return pElement;
 }
-
-/* TODO: stub */
-//void* mp_ls_getTextSpriteHandle(lua_State* L) {
-//	cMultiGame& pGame = cMultiGame::Instance();
-//	int* pID = (int*)luaL_checkudata(L, 1, "textsprite"); // nHandle
-//	if (!pID || *pID == -1) return nil;
-//	return pGame.GetEntityForHandle(pGame.LocalPlayerID(), *pID);
-//}
-
-//void* lsc_get_text_sprite(lua_State* L) {
-//	cMultiGame& pGame = cMultiGame::Instance();
-//	void* pData = luaL_checkudata(L, 1, "textsprite");
-//	if (!pData) return NULL;
-//	int nHandle = *((int*)pData);
-//	if (nHandle == -1) return NULL;
-//	return pGame.GetEntityForHandle(pGame.LocalPlayerID(), nHandle);
-//}
 
 uint32 lsc_getColor(lua_State* L, int index) {
 	if (lua_isnumber(L, index)) return luaL_checknumber(L, index);
@@ -226,12 +210,12 @@ uint32 lsc_getColor(lua_State* L, int index) {
 
 /* TODO: stub */
 #ifdef GTA_LIBERTY
-int lsc_pop_peer_id_from_stack(lua_State* L, int index, int defaultID) {
-	cMultiGame& pGame = TheMPGame;
-	int nPeerID = 0;
+int32 lsc_pop_peer_id_from_stack(lua_State* L, int index, int defaultID) {
+	cMultiGame& Game = cMultiGame::Instance();
+	int32 nPeerID = 0;
 	if (!lua_istable(L, index)) {
 		if (lsc_isPlayerUserData(L, index)) {
-			int nHandle = lsc_getPlayer(L, index);
+			int32 nHandle = lsc_getPlayer(L, index);
 			lua_remove(L, index);
 			return nHandle;
 		}
@@ -251,7 +235,7 @@ int lsc_pop_peer_id_from_stack(lua_State* L, int index, int defaultID) {
 	if (!lua_isnil(L, -1)) {
 		if (lua_isboolean(L, -1)) {
 			lua_settop(L, -3);
-			nPeerID = (defaultID == 0xB00B5) ? pGame.LocalPlayerID() : defaultID;
+			nPeerID = (defaultID == 0xB00B5) ? Game.LocalPlayerID() : defaultID;
 		}
 		else {
 			lua_remove(L, index);
@@ -282,15 +266,15 @@ int lsc_pop_peer_id_from_stack(lua_State* L, int index, int defaultID) {
 		lua_pushboolean(L, false);
 		lua_rawset(L, -3);
 		lua_settop(L, -2);
-		nPeerID = (defaultID == 0xB00B5) ? pGame.m_pNetSession->m_nSelfPeerID : defaultID;
+		nPeerID = (defaultID == 0xB00B5) ? Game.LocalPlayerID() : defaultID;
 		return nPeerID;
 	}
-	// TODO: implement vector
+	// TODO: implement std::vector
 	TODO();
 	TODO();
 	TODO();
 	TODO();
-	nPeerID = pGame.FindPeerID(nil);
+	nPeerID = Game.FindPeerID(nil);
 	lua_pushvalue(L, index);
 	lua_remove(L, index);
 	lua_pushnumber(L, nPeerID);
@@ -366,16 +350,6 @@ void lsc_update_simsch() {
 	lsc_call(vm, 0, false);
 }
 
-void ls_pushVector3D(lua_State* L, float x, float y, float z) {
-	lua_newtable(L);
-	lua_pushnumber(L, x);
-	lua_rawseti(L, -2, 1);
-	lua_pushnumber(L, y);
-	lua_rawseti(L, -2, 2);
-	lua_pushnumber(L, z);
-	lua_rawseti(L, -2, 3);
-}
-
 int lsn_none(lua_State* L) {
 	lua_pushstring(L, "not implemented");
 	lua_error(L);
@@ -400,11 +374,7 @@ void lscript_open_constants() {
 
 	// weapon IDs ["weapon"]
 	LUA_TABLE_BEGIN();
-#ifdef GTA_LIBERTY
-		LUA_PUSH_CONSTANT("rocket_launcher", 30);
-#else
-		LUA_PUSH_CONSTANT("rocket_launcher", 32);
-#endif
+		LUA_PUSH_CONSTANT("rocket_launcher", WEAPONTYPE_ROCKETLAUNCHER);
 	LUA_TABLE_END("weapon");
 
 
@@ -594,30 +564,20 @@ void lscript_open_constants() {
 
 	// pickup icon IDs ["pickupicon"]
 	LUA_TABLE_BEGIN();
-#ifdef GTA_LIBERTY
-		LUA_PUSH_CONSTANT("powerup",      45);
-		LUA_PUSH_CONSTANT("base",         46);
-		LUA_PUSH_CONSTANT("checkpoint",   47);
-		LUA_PUSH_CONSTANT("player",       48);
-		LUA_PUSH_CONSTANT("objective",    49);
-		LUA_PUSH_CONSTANT("car",          50);
-		LUA_PUSH_CONSTANT("tank",         51);
-		LUA_PUSH_CONSTANT("carlockup",    52);
-		LUA_PUSH_CONSTANT("targetplayer", 53);
-#else
-		LUA_PUSH_CONSTANT("powerup",      12);
-		LUA_PUSH_CONSTANT("base",         13);
-		LUA_PUSH_CONSTANT("checkpoint",   14);
-		LUA_PUSH_CONSTANT("player",       15);
-		LUA_PUSH_CONSTANT("objective",    16);
-		LUA_PUSH_CONSTANT("car",          17);
-		LUA_PUSH_CONSTANT("tank",         18);
-		LUA_PUSH_CONSTANT("carlockup",    19);
-		LUA_PUSH_CONSTANT("targetplayer", 20);
-		LUA_PUSH_CONSTANT("briefcase",    51);
-		LUA_PUSH_CONSTANT("bomb",         52);
-		LUA_PUSH_CONSTANT("boat",         53);
-		LUA_PUSH_CONSTANT("heli",         54);
+		LUA_PUSH_CONSTANT("powerup",      RADAR_SPRITE_POWERUP);
+		LUA_PUSH_CONSTANT("base",         RADAR_SPRITE_MP_BASE);
+		LUA_PUSH_CONSTANT("checkpoint",   RADAR_SPRITE_MP_CHECKPOINT);
+		LUA_PUSH_CONSTANT("player",       RADAR_SPRITE_MP_PLAYER);
+		LUA_PUSH_CONSTANT("objective",    RADAR_SPRITE_MP_OBJECTIVE);
+		LUA_PUSH_CONSTANT("car",          RADAR_SPRITE_MP_CAR);
+		LUA_PUSH_CONSTANT("tank",         RADAR_SPRITE_MP_TANK);
+		LUA_PUSH_CONSTANT("carlockup",    RADAR_SPRITE_MP_CARLOCKUP);
+		LUA_PUSH_CONSTANT("targetplayer", RADAR_SPRITE_MP_TARGETPLAYER);
+#ifndef GTA_LIBERTY
+		LUA_PUSH_CONSTANT("briefcase",    RADAR_SPRITE_BCASE);
+		LUA_PUSH_CONSTANT("bomb",         RADAR_SPRITE_MPBOMB);
+		LUA_PUSH_CONSTANT("boat",         RADAR_SPRITE_BOAT);
+		LUA_PUSH_CONSTANT("heli",         RADAR_SPRITE_HELI);
 #endif
 	LUA_TABLE_END("pickupicon");
 
@@ -625,8 +585,8 @@ void lscript_open_constants() {
 	// waypoint type ["waypointtype"]
 #ifndef GTA_LIBERTY
 	LUA_TABLE_BEGIN();
-		LUA_PUSH_CONSTANT("air",  1);
-		LUA_PUSH_CONSTANT("land", 0);
+		LUA_PUSH_CONSTANT("air",  WAYPOINT_AIR);
+		LUA_PUSH_CONSTANT("land", WAYPOINT_LAND);
 	LUA_TABLE_END("waypointtype");
 #endif
 }

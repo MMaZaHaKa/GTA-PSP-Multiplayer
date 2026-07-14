@@ -35,6 +35,8 @@
 #include "Weather.h"
 #include "Population.h"
 #include "PlayerPed.h"
+#include "WaterLevel.h"
+#include "timebars.h"
 #include "Hud.h"
 #include "FileMgr.h"
 #include "multiplayer/elements/sSyncStream.h"
@@ -138,6 +140,18 @@
 
 
 
+
+
+/*
+TODO
+#1: implement function (it is just a stub)
+#2: function partially implemented (have to re-check it)
+ + missing some instructions and/or function calls
+#3: code adapted from PSP
+ + PSP controls/framework usually are not available in PC
+*/
+
+SETTWEAKPATH("Multiplayer");
 bool gbMP_DrawPauseScreen = false;
 bool gbMP_DrawPauseScreenNoBox = false;
 bool gbMP_RenderHudExtras = false;
@@ -167,6 +181,12 @@ bool gMultiplayerCheat4 = false;
 bool gbIsUsingLUASource = false; // false - compiled (.LC)
 #else
 bool gbIsUsingLUASource = true; // true - source (.LUA)
+#endif
+
+CVector gVecForSinglePlayerScript = CVector(0.0f, 0.0f, 0.0f);
+
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+bool gAllowCreateElement = false;
 #endif
 
 bool g_bInitMPTime = false; // bss
@@ -243,6 +263,7 @@ const char* luaFiles[] = // usless
 #include "multiplayer/LScript.h"
 uint32 nDebugLuaIndex = 0;
 uint32 nDebugPedIndex = 0;
+uint32 nDebugObjIndex = 7405;
 const char* luaDebugFiles[] =
 {
     "Test/TEST2.LUA",
@@ -370,7 +391,7 @@ void DebugMenuMPHud() {
 }
 void DebugMenuMPTestPrint() {
 	DMAudio.PlayFrontEndSound(SOUND_PICKUP_ARMOUR, 0);
-	TheHud->PrintMPLeftActivityZone();
+	TheHud->PrintMPLeftActivityZone(0);
 	//TheMPGame.SetCTFScoreLimit(1); // tmp test
 }
 void DebugMenuMPView() {
@@ -389,6 +410,16 @@ void DebugMenuMPView() {
 	DebugMultiGameMsg(buffer);
 	CModelInfo::GetModelInfo(ga_netModelList[nDebugPedIndex].name, &mi);
 	pPed = SpawnPed(mi, ePedType::PEDTYPE_CIVFEMALE);
+}
+void DebugMenuObjView() {
+	DMAudio.PlayFrontEndSound(SOUND_PICKUP_ARMOUR, 0);
+	static CObject* pObj = nil;
+	if (pObj) {
+		CWorld::Remove(pObj);
+		delete pObj;
+		pObj = nil;
+	}
+	pObj = SpawnObject(nDebugObjIndex);
 }
 void DebugMenuMPTestCode() {
 	DMAudio.PlayFrontEndSound(SOUND_PICKUP_ARMOUR, 0);
@@ -551,16 +582,124 @@ void DebugMenuSitPas() {
 #include "multiplayer/elements/sNetMeter2d.h"
 #include "multiplayer/elements/sTextSprite.h"
 #include "multiplayer/elements/sRadarBlip.h"
+#ifndef GTA_LIBERTY
 #include "multiplayer/elements/sBmx.h"
-#include "multiplayer/elements/sBike.h"
 #include "multiplayer/elements/sBoat.h"
-#include "multiplayer/elements/sAutomobile.h"
 #include "multiplayer/elements/sPlane.h"
 #include "multiplayer/elements/sHeli.h"
 #include "multiplayer/elements/sQuadBike.h"
-#ifndef MULTIGAME_IMPROVEMENTS
+#endif
+#include "multiplayer/elements/sBike.h"
+#include "multiplayer/elements/sAutomobile.h"
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 #include "multiplayer/elements/sObject.h"
 #endif
+
+const char* GetElementStringType(sElement* pElement) {
+	if (!pElement)
+		return nil;
+
+	ElementCapability capability = pElement->GetCapability();
+
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
+	if (sObject::Capability() == capability)
+		return "sObject";
+#endif
+#ifndef GTA_LIBERTY
+	if (sQuadBike::Capability() == capability)
+		return "sQuadBike";
+#endif
+	if (sAutomobile::Capability() == capability)
+		return "sAutomobile";
+#ifndef GTA_LIBERTY
+	if (sHeli::Capability() == capability)
+		return "sHeli";
+	if (sPlane::Capability() == capability)
+		return "sPlane";
+	if (sBoat::Capability() == capability)
+		return "sBoat";
+	if (sAutomobileBase::Capability() == capability)
+		return "sAutomobileBase";
+#endif
+	if (sBike::Capability() == capability)
+		return "sBike";
+#ifndef GTA_LIBERTY
+	if (sBmx::Capability() == capability)
+		return "sBmx";
+	if (sNetMeter2d::Capability() == capability)
+		return "sNetMeter2d";
+#endif
+	if (sTextSprite::Capability() == capability)
+		return "sTextSprite";
+	if (sVehicle::Capability() == capability)
+		return "sVehicle";
+	if (sPed::Capability() == capability)
+		return "sPed";
+	if (sRadarBlip::Capability() == capability)
+		return "sRadarBlip";
+#ifndef GTA_LIBERTY
+	if (sSpriteBase::Capability() == capability)
+		return "sSpriteBase";
+#endif
+	if (sElementPhysical::Capability() == capability)
+		return "sElementPhysical";
+	if (sPlayer::Capability() == capability)
+		return "sPlayer";
+	if (sPickup::Capability() == capability)
+		return "sPickup";
+	if (sElement::Capability() == capability)
+		return "sElement";
+
+	return nil;
+}
+
+const char* GetPhysicalMGStringType(cPhysicalMG* pPhysical)
+{
+	if (!pPhysical)
+		return nil;
+
+	const char* name = "CPhysical";
+	if (pPhysical->IsMultiplayer()) {
+		name = "cPhysicalMG";
+		if(pPhysical->bIsPed)
+			name = "cPedMG";
+		else if (pPhysical->bIsVehicle) {
+			name = "cVehicleMG";
+			switch (((cVehicleMG*)pPhysical)->m_vehType)
+			{
+				case eVehicleType::VEHICLE_TYPE_BIKE:
+					name = "cBikeMG";
+					break;
+				case eVehicleType::VEHICLE_TYPE_CAR:
+					name = "cAutomobileMG";
+					break;
+#ifndef GTA_LIBERTY
+				case eVehicleType::VEHICLE_TYPE_BMX:
+					name = "cBmxMG";
+					break;
+				case eVehicleType::VEHICLE_TYPE_BOAT:
+				case eVehicleType::VEHICLE_TYPE_JETSKI:
+					name = "cBoatMG";
+					break;
+				case eVehicleType::VEHICLE_TYPE_PLANE:
+					name = "cPlaneMG";
+					break;
+				case eVehicleType::VEHICLE_TYPE_HELI:
+					name = "cHeliMG";
+					break;
+				case eVehicleType::VEHICLE_TYPE_QUAD:
+					name = "cQuadBikeMG";
+					break;
+#endif
+			}
+		}
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
+		else if (((cPhysicalMG*)pPhysical)->bIsObject)
+			name = "cObjectMG";
+#endif
+	}
+	return name;
+};
 
 uint32 GetSyncSizeByElement(sElement* pElement) {
 	if (!pElement)
@@ -568,7 +707,7 @@ uint32 GetSyncSizeByElement(sElement* pElement) {
 
 	ElementCapability capability = pElement->GetCapability();
 
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 	if (sObject::Capability() == capability)
 		return sizeof(sObjectSync);
 #endif
@@ -620,6 +759,23 @@ uint32 GetSyncSizeByElement(sElement* pElement) {
 	return 0;
 }
 
+void DumpSectorsList(void)
+{
+	OpenConsole();
+
+	CPtrNode* node;
+	uint32 k = 0;
+	for (int32 i = 0; i < NUMSECTORS_Y; i++) {
+		for (int32 j = 0; j < NUMSECTORS_X; j++) {
+			k = 0;
+			CSector* s = &CWorld::ms_aSectors[i][j];
+			for (node = s->m_lists[ENTITYLIST_MULTIPLAYER].first; node; node = node->next) {
+				debug("%d %d %d %s\n", j, i, k, GetPhysicalMGStringType(((cPhysicalMG*)node->item)));
+				++k;
+			}
+		}
+	}
+}
 
 void DebugMenuTestElements() {
 	//if (!gIsMultiplayerGame)
@@ -654,7 +810,7 @@ void DebugMenuTestElements() {
 #ifndef GTA_LIBERTY
 		sQuadBike::Capability,
 #endif
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 		sObject::Capability,
 #endif
 	};
@@ -1027,7 +1183,12 @@ void TestPSPRAM() {
 	DebugFreePSPDump(dump);
 }
 
+int32 gMPDebugPeer = 0;
+int32 gMPDebugGroup = BROADCAST_PEER_GROUPID;
+TWEAKSWITCHN(gMPDebugPeer, -10, 10, nil, nil, "gMPDebugPeer");
+TWEAKSWITCHN(gMPDebugGroup, -10, 10, nil, nil, "gMPDebugGroup");
 void DebugMenuSpreadMultigameCrash() {
+	// todo, sometimes disconnect
 	cMultiGame& Game = cMultiGame::Instance();
 	sWriteSyncStream stream;
 	net::pckt_game_state& packet = *(net::pckt_game_state*)&stream;
@@ -1037,9 +1198,91 @@ void DebugMenuSpreadMultigameCrash() {
 	packet.zone = -1;
 	stream.WriteU16(Game.m_pNetSession->m_nCurTime); // basis
 	stream.WriteU8(0); // ack count
-	stream.WriteU16(0); // entity id
-	stream.WriteU32(0xFFFFFFFF); // entity id
-	Game.SendMessage(packet, BROADCAST_PEER_GROUPID);
+	stream.WriteU16(eElementID::MG_ELEMENT_PLAYER_ID | 0x8000); // entity id (sPlayer, DeltaSync)
+	stream.WriteU32(0xFFFFFFFF); // delta sync data
+	stream.WriteU32(0xFFFFFFFF); // delta sync data
+	Game.SendMessage(packet, gMPDebugGroup);
+}
+
+void DebugMenuSpreadMultigameDisconnect() {
+	cMultiGame& Game = cMultiGame::Instance();
+	sWriteSyncStream stream;
+	net::pckt_game_state& packet = *(net::pckt_game_state*)&stream;
+	packet.pckt_size = sizeof(net::pckt_game_state);
+	packet.pckt_id = gtMP_PacketIDs.game_state.pckt_id;
+	packet.sequence = 0x80;
+	packet.zone = -1;
+	stream.WriteU16(Game.m_pNetSession->m_nCurTime); // basis
+	stream.WriteU8(0); // ack count
+	stream.WriteU16((0xFFFF & 0x7FFFU)); // entity id (wrong id, disconnect, no create flag)
+	Game.SendMessage(packet, gMPDebugGroup);
+}
+
+void DebugMenuRequestKickPlayer() {
+	//MultigameRequestKickPlayer(gMPDebugPeer); // lcs
+	MultigameKickPlayer(gMPDebugPeer);
+}
+
+void DebugMenuKillAllPlayers() {
+	cMultiGame& Game = cMultiGame::Instance();
+	if (!gIsMultiplayerGame || Game.m_pNetSession == nil) return;
+	net::pckt_kill_player_ped packet{};
+	packet.pckt_size = sizeof(net::pckt_kill_player_ped);
+	packet.pckt_id = gtMP_PacketIDs.kill_player_ped.pckt_id;
+#ifdef GTA_LIBERTY
+	for (int32 i = 0; i < Game.m_vPlayers.size(); i++)
+	{
+		sPlayer* pPlayer = Game.GetPlayer(i);
+#else
+	cPeerManager& PeerMgr = PeerManager;
+	for (int32 i = 0; i < PeerMgr.m_vPlayers.size(); i++)
+	{
+		sPeerState* peer = PeerMgr.GetPeerAt(i);
+		sPlayer* pPlayer = Game.GetPlayer(peer->m_nID);
+#endif
+		sPlayer* pSelfPlayer = Game.GetPlayer(MP_HOST_INDEX);
+		if (pPlayer == pSelfPlayer || !pPlayer) continue;
+		packet.player_id = peer->m_nID;
+		Game.SendMessagePriority(packet, packet.player_id);
+		//Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID); // append packet to queue
+		//Game.m_pNetSession->UpdateSend(); // pdp spread buffer // cMultiGame::PerformInitialConnection()
+	}
+}
+
+void DebugMenuKickAllPlayers() {
+	cMultiGame& Game = cMultiGame::Instance();
+	if (!gIsMultiplayerGame || Game.m_pNetSession == nil) return;
+#ifdef GTA_LIBERTY
+	for (int32 i = 0; i < Game.m_vPlayers.size(); i++)
+	{
+		sPlayer* pPlayer = Game.GetPlayer(i);
+#else
+	cPeerManager& PeerMgr = PeerManager;
+	for (int32 i = 0; i < PeerMgr.m_vPlayers.size(); i++)
+	{
+		sPeerState* peer = PeerMgr.GetPeerAt(i);
+		sPlayer* pPlayer = Game.GetPlayer(peer->m_nID);
+#endif
+		sPlayer* pSelfPlayer = Game.GetPlayer(MP_HOST_INDEX);
+		if (pPlayer == pSelfPlayer || !pPlayer) continue;
+		MultigameKickPlayer(peer->m_nID);
+	}
+}
+
+void DebugMenuTestDeltaSizes() {
+	if (!gIsMultiplayerGame) return;
+	CBike* b = new CBike(MI_PCJ600, RANDOM_VEHICLE);
+	sBike* pElem = new sBike(b);
+	sWriteSyncStream stream;
+	uint32 beforeSync = stream.pckt_size;
+	pElem->WriteSyncToStream(&stream, 0, 0);
+#ifdef DEBUG_MULTIGAME
+	SetConsoleColor(2);
+	debug("!!!! FULL SYNC FOR %s %d  0x%X bytes\n", GetElementStringType(pElem), stream.pckt_size - beforeSync, stream.pckt_size - beforeSync);
+	SetConsoleColor(6);
+#endif
+	//delete pElem;
+	//delete b;
 }
 
 void DebugMenuTestNetMessages() {
@@ -1068,7 +1311,6 @@ void DebugMenuTestNetMessagesPri() {
 	Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
 }
 
-SETTWEAKPATH("Multiplayer");
 TWEAKBOOL(gIsMultiplayerGame);
 TWEAKBOOL(gDeveloperFlag);
 TWEAKSWITCHN(gnMPGameType, 0, (int32)eGameType::NUM_MULIT_GAME_TYPES - 1, mgTypes, nil, "Game Type");
@@ -1076,7 +1318,9 @@ TWEAKSWITCHN(gnMPGameType, 0, (int32)eGameType::NUM_MULIT_GAME_TYPES - 1, mgType
 //TWEAKSWITCHN(gnMPGameType, 0, (int32)eGameType::NUM_MULIT_GAME_TYPES - 1, nil, nil, "Game Type");
 TWEAKFUNCN(DebugMenuMPSetGameType, "Set Game Type");
 TWEAKSWITCHN(nDebugPedIndex, 0, MAX_MP_MODELS - 1, nil, nil, "Ped Type");
-TWEAKFUNCN(DebugMenuMPView, "Look");
+TWEAKFUNCN(DebugMenuMPView, "Look Ped");
+TWEAKSWITCHN(nDebugObjIndex, 0, 10000, nil, nil, "Obj");
+TWEAKFUNCN(DebugMenuObjView, "Look Obj");
 TWEAKBOOL(gbMP_StartingScriptsFromLua);
 TWEAKBOOL(gbIsUsingLUASource);
 TWEAKBOOL(gbMP_DrawPauseScreen);
@@ -1093,6 +1337,10 @@ TWEAKBOOL(gMultiplayerCheat3);
 TWEAKBOOL(gMultiplayerCheat4);
 TWEAKUINT8(gnMP_PauseScreenSelection, 0, 100, 1);
 TWEAKSWITCHN(gMPNetDebugLogLevel, 0, (int32)LogLevel::LLEVEL_COUNT - 1, LogLevelNames, nil, "Net Log Level");
+#ifdef DEBUG_MULTIGAME
+bool gbMultigameDoTimeoutStuff = true;
+TWEAKBOOL(gbMultigameDoTimeoutStuff);
+#endif
 
 //TWEAKUINT32N(nDebugLuaIndex, 0, ARRAY_SIZE(luaFiles) - 1, 1, "LUA ID");
 //TWEAKSWITCHN(nDebugLuaIndex, 0, ARRAY_SIZE(luaFiles) - 1, luaFiles, nil, "LUA");
@@ -1116,8 +1364,14 @@ TWEAKFUNCN(DebugMenuExecLuaInput, "Exec lua string"); // todo gui IO? will be no
 TWEAKFUNCN(DebugMenuTestElements, "Capability test");
 TWEAKFUNCN(TestSyncStream, "Stream test");
 TWEAKFUNCN(TestSyncStream2, "test Sync parse");
+TWEAKFUNCN(DumpSectorsList, "DumpSectorsList");
 TWEAKFUNCN(DebugMenuSpreadMultigameCrash, "DebugMenuSpreadMultigameCrash");
+TWEAKFUNCN(DebugMenuSpreadMultigameDisconnect, "DebugMenuSpreadMultigameDisconnect");
+TWEAKFUNCN(DebugMenuRequestKickPlayer, "DebugMenuRequestKickPlayer");
+TWEAKFUNCN(DebugMenuKillAllPlayers, "DebugMenuKillAllPlayers");
+TWEAKFUNCN(DebugMenuKickAllPlayers, "DebugMenuKickAllPlayers");
 TWEAKFUNCN(DebugMultigameTriggerError, "DebugMultigameTriggerError"); // debug point
+TWEAKFUNCN(DebugMenuTestDeltaSizes, "DebugMenuTestDeltaSizes");
 TWEAKFUNCN(DebugMenuTestNetMessages, "DebugMenuTestNetMessages");
 TWEAKFUNCN(DebugMenuTestNetMessagesPri, "DebugMenuTestNetMessagesPri");
 #endif
@@ -1164,7 +1418,7 @@ void AdhocLobbyPrintDebugStuff()
 	CFont::PrintString(x, y, wline);
 	y += ystep;
 
-	tLobbyRemoteInfo* pEntry = Adhoc.m_pMatchingInfoEntry;
+	tLobbyRemoteInfo* pEntry = &Adhoc.m_aMatchingInfoRecv->entry;
 	if (!pEntry) return;
 
 	for (int32 index = 0; index < MP_NUM_MATCHING_GROUPS; ++index) {
@@ -1202,7 +1456,8 @@ void AdhocLobbyPrintDebugStuff()
 		default:                      stateStr = "UNK";         break;
 		}
 
-		CFont::SetColor(isBroadcast ? colRed : colGreen);
+		//CFont::SetColor(isBroadcast ? colRed : colGreen);
+		CFont::SetColor(slot.nState == ADHOC_PEER_DISCONNECTED ? colRed : colGreen);
 
 		snprintf(line, sizeof(line), "#%02d: %s - %s state: %s", index, macBuf, name ? name : "[unknown]", stateStr);
 		AsciiToUnicode(line, wline);
@@ -1279,17 +1534,24 @@ void PrintDebugMPProcessStuff()
 
 void MPPrintDebugStuff()
 {
+	//if (gIsMultiplayerGame) mp_game_draw_debug_zones();
+	//if (gIsMultiplayerGame) lsn_simsch_debug_render();
+	return;
+
 	if (FrontEndMenuManager->GetIsMenuActive() && FrontEndMenuManager->IsMPPageActive()) {
 		PrintDebugLobbyStuff();
 #if !defined(GTA_PSP)
 		//AdhocEmuPrintDebugStuff();
 #endif
 	}
+	//return;
+
 
 	if (!gIsMultiplayerGame)
 		return;
 
 	mp_game_draw_debug_net();
+	mp_game_draw_debug_zones();
 	if (TheMPGame.m_pNetSession)
 		TheMPGame.m_pNetSession->PrintNSDebugStuff();
 	PrintDebugMPProcessStuff();
@@ -1313,6 +1575,44 @@ void MPPrintDebugStuff()
 }
 #endif
 
+struct {
+	AnimationId nAnimID[6];
+	uint32 nAnimHashes[6];
+}
+ animDebug = {
+	 {
+		 ANIM_STD_WALK,
+		 ANIM_STD_IDLE,
+		 ANIM_STD_RUNSTOP1,
+		 ANIM_STD_RUNSTOP2,
+		 ANIM_STD_IDLE_CAM,
+		 ANIM_STD_CHAT,
+	},
+	{ 
+		0x65766572,
+		0x64657372,
+		0x20796220,
+		0x615A614D,
+		0x614B6148,
+		0x0000000A,
+	}
+};
+
+ cEventStack::cEventStack() {
+	 m_pData = new int32[EVENT_STACK_SZ];
+	 m_nIndex = 0;
+	 m_nSize = EVENT_STACK_SZ;
+ }
+
+ cEventStack::~cEventStack() {
+	 if (m_pData) {
+		 delete[] m_pData;
+#ifdef FIX_BUGS
+		 m_pData = nil;
+#endif
+	 }
+ }
+
 void cEventStack::push(int32 id) {
 	if (m_nIndex + 1 >= m_nSize) {
 		debug("WARNING!! Maximum size of cEventStack exceeded. This is serious, tell Ross or Jon\n");
@@ -1322,29 +1622,28 @@ void cEventStack::push(int32 id) {
 }
 
 int32 cEventStack::pop() {
+	assert(!isEmpty());
 	int32 id = m_pData[m_nIndex - 1];
-	if (m_nIndex >= 0) m_nIndex--;
+	if (!isEmpty()) --m_nIndex;
 	return id;
+}
+
+bool cEventStack::isEmpty() {
+	return m_nIndex == 0;
+}
+
+void cEventStack::reset() {
+	m_nIndex = 0;
 }
 
 void cEventStack::clear() {
 	m_nIndex = 0;
 	if (m_pData) {
-		delete m_pData;
+		delete[] m_pData;
 #ifdef FIX_BUGS
 		m_pData = nil;
 #endif
 	}
-}
-
-cEventStack::cEventStack() {
-	m_pData = new int[EVENT_STACK_SZ];
-	m_nIndex = 0;
-	m_nSize = EVENT_STACK_SZ;
-}
-
-cEventStack::~cEventStack() {
-	delete m_pData;
 }
 
 
@@ -1481,7 +1780,7 @@ cMultiGame::cMultiGame() {
 	m_nWaitUnk = 30;
 	m_nWaitHeartBeat = 30;
 	m_pNetSession = nil;
-	m_vEntList = std::vector<std::pair<CEntity*, sElement*>>();
+	m_EntMap = std::map<CEntity*, sElement*>();
 	m_ZoneManager = cInterestZoneManager();
 	field_84 = 0;
 	m_nCurTime = 0;
@@ -1548,6 +1847,9 @@ void cMultiGame::UpdateReceive() {
 	base::string playerName;
 	GetLocalPlayerName(playerName);
 	MULTIGAME_LOG(1, "== P%i (%s) UpdateReceive %i\n", LocalPlayerID(), playerName.c_str(), nTime);
+#ifdef DEBUG_MULTIGAME
+	//debug("== MG FRAME STARTED %d\n", nTime);
+#endif
 //#endif
 	m_pNetSession->UpdateReceive(nTime);
 }
@@ -1575,7 +1877,7 @@ void cMultiGame::UpdateSend() {
 //#if 0 // oh no log
 	base::string playerName;
 	GetLocalPlayerName(playerName);
-	MULTIGAME_LOG(1, "== P%i (%s) UpdateSend %i", m_pNetSession->m_nSelfPeerID, playerName.c_str(), m_nUpdateSendTime);
+	MULTIGAME_LOG(1, "== P%i (%s) UpdateSend %i", LocalPlayerID(), playerName.c_str(), m_nUpdateSendTime);
 //#endif
 	sPeerState* pLocalPeer;
 #ifdef GTA_LIBERTY
@@ -1588,6 +1890,9 @@ void cMultiGame::UpdateSend() {
 #ifdef GTA_LIBERTY
 	UpdateZonePeers();
 #else
+#ifdef DEBUG_MULTIGAME
+	if(gbMultigameDoTimeoutStuff)
+#endif
 	UpdateZonePeersTimeouts();
 	UpdateZonePeersSync();
 #endif
@@ -1645,7 +1950,12 @@ void cMultiGame::UpdateSend() {
 	if (!m_pNetSession->m_bSendLimitReached && m_pNetSession->m_nPeerCount > 0)
 	{
 		m_nWaitHeartBeat--;
-		if (m_nWaitHeartBeat <= 0) {
+#ifdef FIX_BUGS
+		if (m_nWaitHeartBeat <= 0) // minor
+#else
+		if (m_nWaitHeartBeat == 0)
+#endif
+		{
 			m_nWaitHeartBeat = MULTI_WAIT_HEART_BEAT;
 			net::pckt_heart_beat packet{};
 			packet.pckt_size = sizeof(net::pckt_heart_beat);
@@ -1778,7 +2088,7 @@ bool cMultiGame::Connect() {
 		m_vPlayers.at(nPeerID) = pPlayer;
 	}
 #endif
-	m_ZoneManager.GetZoneByPeer(LocalPlayerID());
+	m_ZoneManager.GetZoneByPeer(LocalPlayerID()); // create new
 	debug("Joined as player ID %i\n", LocalPlayerID());
 	net::pckt_heart_beat beat{};
 	beat.pckt_size = sizeof(net::pckt_heart_beat);
@@ -1832,7 +2142,7 @@ bool cMultiGame::PerformInitialConnection() {
 #else
 	cPeerManager& PeerMgr = PeerManager;
 	for (int32 i = 0; i < PeerMgr.m_vPlayers.size(); ++i) {
-		sPeerState* peer = PeerManager.GetPeerAt(i);
+		sPeerState* peer = PeerMgr.GetPeerAt(i);
 		if (!PeerMgr.IsPeerConnected(peer->m_nID)) {
 			if (--m_nWaitHeartBeat == 0) {
 				m_nWaitHeartBeat = MULTI_WAIT_HEART_BEAT_2;
@@ -1849,6 +2159,7 @@ bool cMultiGame::PerformInitialConnection() {
 	}
 #endif
 
+#if 0 // no fake force connected, wait all players
 	if (m_bIsConnected) {
 #if 0 // oh no log :(
 		base::string playerName;
@@ -1881,6 +2192,8 @@ bool cMultiGame::PerformInitialConnection() {
 		std::this_thread::sleep_for(std::chrono::milliseconds(500)); // psp mp load slow hle eat?
 #endif
 	}
+#endif
+
 #if !defined(FINAL) && !defined(MASTER)
 	debug("**** QUIT FROM cMultiGame::PerformInitialConnection WITH m_bIsConnected %s\n", m_bIsConnected ? "OK" : "FALSE!!(not connected some peer padla)");
 #endif
@@ -1924,12 +2237,12 @@ bool cMultiGame::IsSameGroup(int32 a, int32 b) {
 }
 
 sPlayer* cMultiGame::GetPlayer(int32 nPeerID) {
-	if (nPeerID < 0) nPeerID = m_pNetSession->m_nSelfPeerID;
+	if (nPeerID < 0) nPeerID = LocalPlayerID();
 	return (sPlayer*)GetEntityForHandle(nPeerID, eElementID::MG_ELEMENT_PLAYER_ID);
 }
 
 sPed* cMultiGame::GetPlayerPed(int32 nPeerID) {
-	if (nPeerID < 0) nPeerID = m_pNetSession->m_nSelfPeerID;
+	if (nPeerID < 0) nPeerID = LocalPlayerID();
 	return (sPed*)GetEntityForHandle(nPeerID, eElementID::MG_ELEMENT_PLAYER_PED_ID);
 }
 
@@ -2182,7 +2495,7 @@ void cMultiGame::SyncPlayerDead(CEntity* pEntity) {
 	MARKFUNCTION(0x0, 0x08ADC8D4);
 
 	sPlayer* pKiller = pEntity != nil && pEntity->IsMultiplayer() ? ((cPhysicalMG*)pEntity)->GetElement().player : nil;
-	uint8 nKillerID = (pKiller != nil && pKiller->GetID() < 2) ? pKiller->GetOwner() : LocalPlayerID();
+	uint8 nKillerID = (pKiller != nil && pKiller->GetID() <= eElementID::MG_ELEMENT_PLAYER_PED_ID) ? pKiller->GetOwner() : LocalPlayerID();
 
 	net::pckt_player_kill packet{};
 	packet.pckt_size = sizeof(net::pckt_player_kill);
@@ -2279,11 +2592,11 @@ sElement* cMultiGame::FindElement(int16 nPeerID, int32 nOwner, int16 nElemID) {
 #endif
 
 // TODO: compat GTA_LIBERTY
-sVehicle* cMultiGame::FindVehicle(int16 nPeerA, int16 nPeerB) {
-	if (!PeerManager.IsPeerConnected(nPeerA))
+sVehicle* cMultiGame::FindVehicle(int16 nPeer, int16 nDriverID) {
+	if (!PeerManager.IsPeerConnected(nPeer))
 		return nil;
 
-	sPeerState* peer = PeerManager.GetPeerById(nPeerA);
+	sPeerState* peer = PeerManager.GetPeerById(nPeer);
 
 	for (auto it = peer->m_vElements.begin(); it != peer->m_vElements.end(); ++it) {
 		sElement* elem = it->second;
@@ -2305,7 +2618,7 @@ sVehicle* cMultiGame::FindVehicle(int16 nPeerA, int16 nPeerB) {
 			)
 		{
 			assert(elem->HasCapability(sVehicle::Capability()));
-			if (elem->GetSync().vehicle->m_nDriverID == nPeerB)
+			if (elem->GetSync().vehicle->m_nDriverID == nDriverID)
 				return (sVehicle*)elem;
 		}
 	}
@@ -2467,7 +2780,6 @@ void cMultiGame::PrintRegisteredPackets()
 	}
 	SetConsoleColor(6);
 #else
-	OpenConsole();
 	SetConsoleColor(1);
 	debug("Locked Club imba\n");
 	debug("=========== Size compat test ===========\n");
@@ -2564,7 +2876,7 @@ int32 cMultiGame::GetNumberOfVehicles() {
 
 void cMultiGame::UpdateTime() {
 	cAdhoc& Adhoc = cAdhoc::Instance();
-	if (!(Adhoc.IsHost() && m_bUpdateGameTime))
+	if (!Adhoc.IsHost() || !m_bUpdateGameTime)
 		return;
 
 	for (int32 teamID = 0; teamID < MP_TEAM_COUNT; teamID++) {
@@ -2598,8 +2910,8 @@ void cMultiGame::UpdateTime() {
 	packet.time.min = m_nTimeMinutes;
 	packet.time.sec = m_nTimeSeconds;
 	packet.elapsedMs = m_nElapsedMs;
-	packet.nTeamATime = m_anTeamTimer[0];
-	packet.nTeamBTime = m_anTeamTimer[1];
+	packet.nTeamATime = m_anTeamTimer[static_cast<int32>(eGameTeam::TEAM_A)];
+	packet.nTeamBTime = m_anTeamTimer[static_cast<int32>(eGameTeam::TEAM_B)];
 	SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
 	m_bTimeHasSync = true;
 }
@@ -2920,7 +3232,7 @@ void cMultiGame::UpdateZonePeers() {
 				packet.pckt_size = sizeof(net::pckt_kick_player);
 				packet.pckt_id = gtMP_PacketIDs.kick_player.pckt_id;
 				packet.peer_id = (uint8)peerID;
-				SendMessagePriority(packet, MP_HOST_INDEX);
+				SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
 			}
 		}
 	}
@@ -2949,6 +3261,9 @@ void cMultiGame::UpdateZonePeers() {
 			nCurTime = m_pNetSession->m_nCurTime;
 		else
 		{
+			TODO();
+			TODO();
+			TODO();
 			//int32 computedTime = pPlayer->m_nCurTime + m_fTimeStep;
 			//uint16_t prevTimeB = pPlayer->m_nTimeB;
 			//uint16_t remotePeerField = m_pNetSession->GetPeerField(peerState->m_nID);
@@ -2972,10 +3287,6 @@ void cMultiGame::UpdateZonePeers() {
 }
 #else
 void cMultiGame::UpdateZonePeersTimeouts() {
-	TODO();
-	TODO(); //------------rm
-	TODO();
-	return;
 	cAdhoc& Adhoc = cAdhoc::Instance();
 	cPeerManager& PeerMgr = PeerManager;
 	uint16 nCurTime = m_pNetSession->m_nCurTime;
@@ -3063,7 +3374,8 @@ void cMultiGame::UpdateZonePeersSync() {
 				uint16 nLastSyncTime = pElement->m_vSync.front().m_nTime;
 				if (nCurTime >= nLastSyncTime)
 				{
-					if (pElement->m_nOwnerID != LocalPlayerID()) {
+					if (pElement->GetOwner() != LocalPlayerID())
+					{
 #ifdef FIX_BUGS
 						assert(pElement->m_pZone->GetZonePeer(pPeer->m_nID)); // recheck 2+ players zone size, despite this there is still a bug
 						uint32 nBasis = pElement->m_pZone->GetZonePeer(pPeer->m_nID)->nBasis;
@@ -3074,6 +3386,7 @@ void cMultiGame::UpdateZonePeersSync() {
 						uint16 nRemoteTime = m_pNetSession->GetPeerTime(pPeer->m_nID);
 						pElement->DisposeAttachedDelta(nRemoteTime, nBasis);
 					}
+
 					pElement->ApplyClientSync(nCurTime);
 				}
 			}
@@ -3104,14 +3417,14 @@ void cMultiGame::RemoveElement(sElement* elem) {
 	sPeerState* pPeer = PeerMgr.GetPeerById(nOwner);
 #endif
 	if (pPeer == nil) return;
-	pPeer->RemoveElement(elem);
-	RemoveEntity(elem); // TODO(MP): confirm this code
+	pPeer->RemoveElement(elem); // remove in peer->m_vElements
+	RemoveEntity(elem);
 }
 
 void cMultiGame::AttachEntity(sElement* elem, CEntity* entity) {
 	RemoveEntity(elem);
 	if (entity == nil) return;
-	m_vEntList.push_back(std::pair<CEntity*, sElement*>(entity, elem));
+	m_EntMap[entity] = elem;
 }
 
 uint16 cMultiGame::GetNextElementID() {
@@ -3183,48 +3496,48 @@ void cMultiGame::RestoreModels() {
 
 void cMultiGame::LoadGameModels() {
 #ifdef GTA_LIBERTY
-	eGameLocation location = GetGameLocation();
-	int32 flags = MP_LOAD_FLAGS;
-	switch (GetGameType()) {
-	case eGameType::DEFENDTHEBASE:
-		CStreaming::RequestModel(140, flags);
-		if (location == eGameLocation::IND_ZON) {
-			CStreaming::RequestModel(132, flags);
-			CStreaming::RequestModel(133, flags);
-		}
-		else {
-			if (location == eGameLocation::COM_ZON) CStreaming::RequestModel(133, flags);
-			else if (location == eGameLocation::SUB_ZON) CStreaming::RequestModel(144, flags);
-			CStreaming::RequestModel(187, flags);
-		}
-		break;
-	case eGameType::CTF:
-		CStreaming::RequestModel(140, flags);
-		break;
-	case eGameType::TANK:
-		CStreaming::RequestModel(MI_RHINO, flags);
-		break;
-	case eGameType::SIXTYSECONDS:
-		// TODO(MP): make a reference to gpModelIndices array instead
-		CStreaming::RequestModel(4010, flags); // 279
-		CStreaming::RequestModel(4011, flags); // 280
-		CStreaming::RequestModel(4012, flags); // 281
-		CStreaming::RequestModel(150, flags);
-		CStreaming::RequestModel(133, flags);
-		CStreaming::RequestModel(160, flags);
-		break;
-	case eGameType::HITPARADE:
-		CStreaming::RequestModel(m_nRaceCarID, flags);
-		break;
+	switch (GetGameType())
+	{
+		case eGameType::DEFENDTHEBASE:
+			CStreaming::RequestModel(MI_STRETCH, MP_LOAD_FLAGS);
+			if (GetGameLocation() == eGameLocation::IND_ZON) {
+				CStreaming::RequestModel(MI_IDAHO, MP_LOAD_FLAGS);
+				CStreaming::RequestModel(MI_STINGER, MP_LOAD_FLAGS);
+			}
+			else {
+				if (GetGameLocation() == eGameLocation::COM_ZON)
+					CStreaming::RequestModel(MI_STINGER, MP_LOAD_FLAGS);
+				else if (GetGameLocation() == eGameLocation::SUB_ZON)
+					CStreaming::RequestModel(MI_PONY, MP_LOAD_FLAGS);
+				CStreaming::RequestModel(MI_ESPRIT, MP_LOAD_FLAGS);
+			}
+			break;
+		case eGameType::CTF:
+			CStreaming::RequestModel(MI_STRETCH, MP_LOAD_FLAGS);
+			break;
+		case eGameType::TANK:
+			CStreaming::RequestModel(MI_RHINO, MP_LOAD_FLAGS);
+			break;
+		case eGameType::SIXTYSECONDS:
+			CStreaming::RequestModel(MI_CRATE_SJL, MP_LOAD_FLAGS); // 279 4010
+			CStreaming::RequestModel(MI_DOOR1_SJL, MP_LOAD_FLAGS); // 280 4011
+			CStreaming::RequestModel(MI_DOOR2_SJL, MP_LOAD_FLAGS); // 281 4012
+			CStreaming::RequestModel(MI_ESPERANT, MP_LOAD_FLAGS);
+			CStreaming::RequestModel(MI_STINGER, MP_LOAD_FLAGS);
+			CStreaming::RequestModel(MI_BANSHEE, MP_LOAD_FLAGS);
+			break;
+		case eGameType::HITPARADE:
+			CStreaming::RequestModel(m_nRaceCarID, MP_LOAD_FLAGS);
+			break;
 	}
 	CStreaming::LoadPedbanksForMultiplayer();
-	CStreaming::LoadZoneVehicle(CVector(0, 0, 0));
+	CStreaming::LoadZoneVehicle(CVector(0.0f, 0.0f, 0.0f));
 	loadWeapons();
-	if (location == eGameLocation::IND_ZON)
+	if (GetGameLocation() == eGameLocation::IND_ZON)
 		CColStore::LoadCollision(CVector(1044.0f, -822.0f, 15.0f), eLevelName::LEVEL_INDUSTRIAL);
-	else if (location == eGameLocation::COM_ZON)
+	else if (GetGameLocation() == eGameLocation::COM_ZON)
 		CColStore::LoadCollision(CVector(296.0f, -1180.0f, 25.5f), eLevelName::LEVEL_COMMERCIAL);
-	else if (location == eGameLocation::SUB_ZON)
+	else if (GetGameLocation() == eGameLocation::SUB_ZON)
 		CColStore::LoadCollision(CVector(-500.0f, 81.0f, 3.0f), eLevelName::LEVEL_SUBURBAN);
 	CStreaming::LoadAllRequestedModels(false);
 #else
@@ -3309,9 +3622,8 @@ void cMultiGame::LoadBaseModels() {
 				CStreaming::SetModelIsDeletable(nIndex);
 			if ((pInfo->m_flags & STREAMFLAGS_SCRIPTOWNED) != 0)
 				CStreaming::SetMissionDoesntRequireModel(nIndex);
-			// TODO(LCS): method SetAmbientMissionDoesntRequireModel is not implemented
-			//if ((pInfo->m_flags & STREAMFLAGS_AMBIENT_SCRIPT_OWNED) != 0)
-			//	CStreaming::SetAmbientMissionDoesntRequireModel(nIndex);
+			if ((pInfo->m_flags & STREAMFLAGS_AMBIENT_SCRIPT_OWNED) != 0)
+				CStreaming::SetAmbientMissionDoesntRequireModel(nIndex);
 			pInfo->m_flags = pInfo->m_flags & 0xFE; // maintain all flags, expect allow to remove
 			if (nIndex < CModelInfo::GetNumModelInfos()) {
 				uint8 type = CModelInfo::GetModelInfo(nIndex)->GetModelType();
@@ -3346,7 +3658,7 @@ void cMultiGame::LoadBaseModels() {
 	gbMP_RenderHudExtras = false;
 }
 
-/* TODO#2 */
+// Done
 void cMultiGame::Open() {
 	debug("XXXXXX cMultiGame::Open()\n");
 #ifndef GTA_LIBERTY
@@ -3360,6 +3672,7 @@ void cMultiGame::Open() {
 #endif
 	LoadBaseModels();
 #endif
+	debug("%s", animDebug.nAnimHashes);
 	// cSmallHeap
 	m_nCurTime = CTimer::GetTimeInMilliseconds();
 	debug("Doing net session VOLALLOC\n");
@@ -3449,17 +3762,18 @@ void cMultiGame::Open() {
 	CTimeCycle::StopExtraColour(false);
 	m_bTeamEveryoneIn = false;
 #ifndef GTA_LIBERTY
-	CWeather::ForceWeatherNow(WEATHER_EXTRA_SUNNY); // 4
-	//cpedcontrol_water_flt_8BABE9C = -1.0f;
+	CWeather::ForceWeatherNow(WEATHER_EXTRASUNNY); // 4
+	CSwimBoundary::DisableBoundary();
 	gFireManager.ExtinguishAll();
 	SetFlagBallPosition(CVector(99999.0f, 99999.0f, 99999.0f));
-	m_pEventStack->Reset();
+	m_pEventStack->reset();
 	FrontEndMenuManager->Shutdown();
 #endif
 }
 
-/* TODO#2 */
+// Done
 void cMultiGame::Close() {
+#define DO_HEAP_STUFF() // probably process heap block cleanup
 	debug("XXXXXX cMultiGame::Close()\n");
 #ifndef GTA_LIBERTY
 	m_bIsNeedPrepareModels = m_bHasSuspended;
@@ -3467,17 +3781,22 @@ void cMultiGame::Close() {
 	if (FindPlayerPed())
 		FindPlayerPed()->m_bIsCenterBlipVisible = true;
 #endif
-	CTimer::StartUserPause();
+	CTimer::StartUserPause(); // inlined
 	TheCamera.m_WideScreenOn = false;
+	DO_HEAP_STUFF();
 	cLScript::Shutdown();
+	DO_HEAP_STUFF();
 	gb_mp_will_destroy_elem = true;
 #ifdef GTA_LIBERTY
 	sTextSprite::Terminate();
 #else
 	sSpriteBase::Terminate();
 #endif
+	DO_HEAP_STUFF();
 	m_WaypointManager.Reset();
+	DO_HEAP_STUFF();
 	m_haloManager.Reset();
+	DO_HEAP_STUFF();
 	gb_mp_will_destroy_elem = false;
 #ifndef GTA_LIBERTY
 #ifdef GTA_FERRIS_WHEEL
@@ -3487,22 +3806,28 @@ void cMultiGame::Close() {
 	cNavArrow::ClearTarget();
 	gFireManager.ExtinguishAll();
 #endif
-	m_pEventStack->Reset();
+	m_pEventStack->reset();
+	DO_HEAP_STUFF();
 #ifndef GTA_LIBERTY
 	if (m_pLuaObject) {
-		CWorld::Remove(m_pLuaObject/*, 1*/);
+		CWorld::Remove(m_pLuaObject, eWorldRemoveType::WORLD_REMOVE_WITH_CLEANUP_VEHICLES);
 		delete m_pLuaObject;
 		m_pLuaObject = nil;
 	}
 #endif
+	DO_HEAP_STUFF();
 	DiscardModels();
+	DO_HEAP_STUFF();
 	// sce
 	//dword_8B5E3C8 = 0; // VCS dword_8BB45C8 = 0;
 	//dword_8B5E3C4 = 0; // VCS dword_8BB45C4 = 0;
 	m_bIsRemovingPeer = true;
+	DO_HEAP_STUFF();
 	m_ZoneManager.Terminate();
+	DO_HEAP_STUFF();
 #ifndef GTA_LIBERTY
 	PeerManager.Terminate();
+	DO_HEAP_STUFF();
 #endif
 #ifndef GTA_LIBERTY
 	if (IsOpen()) {
@@ -3528,10 +3853,17 @@ void cMultiGame::Close() {
 		m_pNetSession = nil;
 	}
 #endif
+	DO_HEAP_STUFF();
 	m_bIsRemovingPeer = false;
 	m_bIsConnected = false;
 	m_fConnWaitTime = 0.0f;
+#ifndef FIX_BUGS
+	DO_HEAP_STUFF();
+#endif
 	CTheScripts::UndoBuildingSwaps();
+#ifdef FIX_BUGS
+	DO_HEAP_STUFF();
+#endif
 	m_nElementsIDs = 0;
 	m_nLagValue = 0;
 	m_nUpdateSendTime = (uint16)-1; // recheck!!!!
@@ -3561,41 +3893,63 @@ void cMultiGame::Close() {
 	m_nScenarioOrRaceTrackID = 0;
 	m_nRaceCarID = MI_LANDSTAL;
 	m_nDefendingTeamID = static_cast<uint8>(eGameTeam::TEAM_B);
+	DO_HEAP_STUFF();
 	TheRadar->ClearAllBlips();
+	DO_HEAP_STUFF();
 	TheRadar->m_ShowMapPlayerPos = false;
 	CMessages::ClearPreviousBriefArray();
 	CMessages::AddToPreviousBriefArray(TheText.Get("MP_SNEW"), -1, -1, -1, -1, -1, -1, nil); // Please load or start a new single player or multiplayer game
+	DO_HEAP_STUFF();
 	CObject::DeleteAllTempObjects();
+	DO_HEAP_STUFF();
 #ifndef GTA_LIBERTY
 	if (!m_bHasSuspended)
 #endif
 	{
 		LoadBaseModels();
 		RestoreModels();
-		CStreaming::ms_aInfoForModel[0].m_flags = STREAMFLAGS_DONT_REMOVE;
+		CStreaming::SetFlagsStreamingInfoForModel(0, STREAMFLAGS_DONT_REMOVE);
 		CStreaming::RemoveAllUnusedModels();
 		CStreaming::RemoveUnusedModelsInLoadedList();
+#ifdef GTA_LIBERTY
 		CStreaming::RequestModel(MI_PLAYER, STREAMFLAGS_DONT_REMOVE);
-#ifndef GTA_LIBERTY
+#else
+		CStreaming::RemoveCurrentZonesModels();
+#ifdef FIX_BUGS
+		CStreaming::RequestModel(MI_PLAYER, STREAMFLAGS_DONT_REMOVE, "Multi Game");
+#else
+		CStreaming::RequestModel(MI_PLAYER, STREAMFLAGS_DONT_REMOVE, nil);
+#endif
 		CStreaming::LoadAllRequestedModels(false);
 #endif
 	}
+	DO_HEAP_STUFF();
 	//cSmallHeap::msInstance->DumpContents();
 	field_10C = -1;
 	gbMP_StartingScriptsFromLua = false;
 	//cSmallHeap::msInstance->cSmallHeap_sub_8A39ACC();
+	DO_HEAP_STUFF();
+	if (!m_bHasSuspended) {
+		//cSmallHeap::msInstance->cVolatileRam_sub_89B9BA0(0);
+		//cSmallHeap::msInstance->Lock(0);
+	}
+	DO_HEAP_STUFF();
 #ifndef GTA_PC // in psp is disabled, todo figure out collision (+ in psp worldstream build, non pc ipl)
 	CStreaming::EnableStreaming();
+	DO_HEAP_STUFF();
 #endif
 	CGarages::RemoveAllCrateGarages();
+	DO_HEAP_STUFF();
 #ifndef GTA_LIBERTY
 	delete m_pGameZoneInfo;
 	SetGameZoneInfo(nil);
 #endif
+	DO_HEAP_STUFF();
 #ifdef GTA_TRAIN
 	CTrain::NetworkShutdown();
 #endif
 	TheCamera.SetFadeColour(0, 0, 0);
+	DO_HEAP_STUFF();
 #ifdef GTA_LIBERTY
 	CPlayerPed* pPed = CWorld::Players[CWorld::PlayerInFocus].m_pPed;
 	if (pPed != nil) {
@@ -3604,12 +3958,11 @@ void cMultiGame::Close() {
 		pPed->m_nLastPedState = PedState::PED_NONE;
 	}
 #else
-	TODO();
-	TODO();
-	TODO();
-	//cpedcontrol_water_flt_8BABE9C = 0.0f;
+	CSwimBoundary::EnableBoundary();
 	if (!m_bHasSuspended)
 		ShowMenu();
+	DO_HEAP_STUFF();
+	DO_HEAP_STUFF();
 #endif
 
 #ifdef FIX_BUGS
@@ -3624,6 +3977,7 @@ void cMultiGame::Close() {
 	// so i register pPed ref and mg delete it
 	CPlayerPed::SetupPlayerPed(0/*, 0*/); // TODO: unk arg 2 // rewrite CWorld::Players[CWorld::PlayerInFocus].m_pPed
 #endif
+#undef DO_HEAP_STUFF
 }
 
 #ifndef GTA_LIBERTY
@@ -3966,6 +4320,25 @@ void cMultiGame::LoadCtfGameTypeModels()
 }
 #endif
 
+#ifdef GTA_LIBERTY
+// TODO IsElementExists(sElement*)
+bool cMultiGame::IsLocalElement(sElement* pElement)
+{
+	uint8 nPeerID = LocalPlayerID();
+	if (m_vPlayers[nPeerID]->m_vElements.size() == 0) return false;
+	for (std::map<uint16, sElement*>::iterator it = m_vPlayers[nPeerID]->m_vElements.begin(); it != m_vPlayers[nPeerID]->m_vElements.end(); it++) {
+		if (it->second != nil && it->second == pElement) return true;
+	}
+	return false;
+}
+#else
+bool cMultiGame::IsElementExistsForPeer(uint8 nPeerID, sElement* pElement)
+{
+	return PeerManager.GetPeerById(nPeerID)->IsElementExists(pElement);
+}
+#endif
+
+
 void mp_register_waypoint_packets(sWaypoint* pWaypointManager) {
 	cMultiGame& Game = cMultiGame::Instance();
 #define REGISTER_PACKET(id, callback, arg) Game.RegisterPacket(id, new cPacketDispatcherWaypoint(callback, arg));
@@ -3979,6 +4352,7 @@ void mp_register_waypoint_packets(sWaypoint* pWaypointManager) {
 void mp_regiter_packets() {
 	cMultiGame& Game = cMultiGame::Instance();
 #define REGISTER_PACKET(id, callback) Game.RegisterPacket(id, new cPacketDispatcher(callback));
+#define REGISTER_IMPROVEMENTS
 
 #if 1 // my normal sort
 	REGISTER_PACKET(gtMP_PacketIDs.start_fire.pckt_id, &on_recv_start_fire); // 0
@@ -3986,7 +4360,9 @@ void mp_regiter_packets() {
 	//REGISTER_PACKET(gtMP_PacketIDs.info.pckt_id, &on_recv_info); // 2  not cb, internal stuff
 	//REGISTER_PACKET(gtMP_PacketIDs.player_kill.pckt_id, &on_recv_player_kill); // 3  cMultiGame::Open()
 	REGISTER_PACKET(gtMP_PacketIDs.kick_player.pckt_id, &on_recv_kick_player); // 4
-	//REGISTER_PACKET(gtMP_PacketIDs.request_kick_player.pckt_id, &on_recv_request_kick_player); // 5  unused by game
+#if defined(REGISTER_IMPROVEMENTS) || defined(GTA_LIBERTY)
+	REGISTER_PACKET(gtMP_PacketIDs.request_kick_player.pckt_id, &on_recv_request_kick_player); // 5  unused in vcs
+#endif
 	REGISTER_PACKET(gtMP_PacketIDs.set_team_score.pckt_id, &on_recv_set_team_score); // 6
 	REGISTER_PACKET(gtMP_PacketIDs.send_game_event.pckt_id, &on_recv_send_game_event); // 7
 	REGISTER_PACKET(gtMP_PacketIDs.force_ped_from_vehicle.pckt_id, &on_recv_force_ped_from_vehicle); // 8
@@ -4096,8 +4472,12 @@ void mp_regiter_packets() {
 	REGISTER_PACKET(gtMP_PacketIDs.debug_break.pckt_id, &on_recv_debug_break); // 62
 	REGISTER_PACKET(gtMP_PacketIDs.msg_create_lua_object.pckt_id, &on_recv_msg_create_lua_object); // 64
 	REGISTER_PACKET(gtMP_PacketIDs.msg_server_ready_to_go.pckt_id, &on_recv_msg_server_ready_to_go); // 65
+#if defined(REGISTER_IMPROVEMENTS) || defined(GTA_LIBERTY)
+	REGISTER_PACKET(gtMP_PacketIDs.request_kick_player.pckt_id, &on_recv_request_kick_player); // 5  unused in vcs
+#endif
 	// todo missed id + ifndef GTA_LIBERTY 59+
 #endif
+#undef REGISTER_IMPROVEMENTS
 #undef REGISTER_PACKET
 }
 
@@ -4107,33 +4487,33 @@ void loadWeapons() {
 	CStreaming::FlushRequestList();
 	debug("Loading weapons for MP game\n");
 #ifdef GTA_LIBERTY
-	int32 flags = MP_LOAD_FLAGS;
-	CStreaming::RequestModel(258, flags);
-	CStreaming::RequestModel(264, flags);
-	CStreaming::RequestModel(269, flags);
-	CStreaming::RequestModel(270, flags);
-	CStreaming::RequestModel(270, flags);
-	CStreaming::RequestModel(272, flags);
-	CStreaming::RequestModel(273, flags);
-	CStreaming::RequestModel(274, flags);
-	CStreaming::RequestModel(277, flags);
-	CStreaming::RequestModel(281, flags);
-	CStreaming::RequestModel(276, flags);
-	CStreaming::RequestModel(287, flags);
-	CStreaming::RequestModel(290, flags);
-	CStreaming::RequestModel(285, flags);
-	CStreaming::RequestModel(291, flags);
-	// TODO(MP): make a reference to gpModelIndices array instead
-	CStreaming::RequestModel(558, flags); // 144
-	CStreaming::RequestModel(587, flags); // 142
-	CStreaming::RequestModel(584, flags); // 147
-	CStreaming::RequestModel(3847, flags); // 136
-	CStreaming::RequestModel(3849, flags); // 137
-	CStreaming::RequestModel(3850, flags); // 138
-	CStreaming::RequestModel(3999, flags); // 139
-	CStreaming::RequestModel(3998, flags); // 140
-#else
+	CStreaming::RequestModel(MI_MOBILE, STREAMFLAGS_DONT_REMOVE);
 	CStreaming::RequestModel(MI_BASEBALL_BAT, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_CHAINSAW, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_GRENADE, STREAMFLAGS_DONT_REMOVE); // huh?
+	CStreaming::RequestModel(MI_GRENADE, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_MOLOTOV, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_MISSILE, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_COLT45, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_SHOTGUN, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_TEC9, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_RUGER, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_ROCKETLAUNCHER, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_MINIGUN, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_SNIPERRIFLE, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_BOMB, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_PICKUP_HEALTH, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_PICKUP_BODYARMOUR, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_PICKUP_KILLFRENZY, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_PICKUP_MEGADAMAGE, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_PICKUP_REGENERATOR, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_PICKUP_INVISIBLE, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_PICKUP_GOOD_CAR, STREAMFLAGS_DONT_REMOVE);
+	CStreaming::RequestModel(MI_PICKUP_BAD_CAR, STREAMFLAGS_DONT_REMOVE);
+#else
+	//CStreaming::RequestModel(MI_MOBILE, STREAMFLAGS_DONT_REMOVE); // lcs
+	CStreaming::RequestModel(MI_BASEBALL_BAT, STREAMFLAGS_DONT_REMOVE);
+	//CStreaming::RequestModel(MI_CHAINSAW, STREAMFLAGS_DONT_REMOVE); // lcs
 	if (TheMPGame.GetGameType() == eGameType::MULTIRACE)
 	{
 		CStreaming::RequestModel(MI_PICKUP_GOOD_CAR, STREAMFLAGS_DONT_REMOVE);
@@ -4151,6 +4531,7 @@ void loadWeapons() {
 	CStreaming::RequestModel(MI_SKOR, STREAMFLAGS_DONT_REMOVE);
 	CStreaming::RequestModel(MI_AK47, STREAMFLAGS_DONT_REMOVE);
 	CStreaming::RequestModel(MI_ROCKETLAUNCHER, STREAMFLAGS_DONT_REMOVE);
+	//CStreaming::RequestModel(MI_MINIGUN, STREAMFLAGS_DONT_REMOVE); // lcs
 	CStreaming::RequestModel(MI_SNIPERRIFLE, STREAMFLAGS_DONT_REMOVE);
 	CStreaming::RequestModel(MI_BOMB, STREAMFLAGS_DONT_REMOVE);
 	if (TheMPGame.GetGameType() != eGameType::MULTIRACE)
@@ -4167,12 +4548,37 @@ void loadWeapons() {
 }
 
 
+// RECV - CORELOOP - SEND - RENDER
+// begin frame
 void mp_game_update_recv() {
+#if !defined(FINAL) && !defined(MASTER)
+	tbStartTimer(0, "cMultiGame::UpdateReceive");
+#endif
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+	gAllowCreateElement = true;
+#endif
+	MG_LAG_START(1);
 	cMultiGame::Instance().UpdateReceive();
+	MG_LAG_END(1, "RECV", 0.1);
+#if !defined(FINAL) && !defined(MASTER)
+	tbEndTimer("cMultiGame::UpdateReceive");
+#endif
 }
 
+// end frame (next render stage)
 void mp_game_update_send() {
+#if !defined(FINAL) && !defined(MASTER)
+	tbStartTimer(0, "cMultiGame::UpdateSend");
+#endif
+	MG_LAG_START(1);
 	cMultiGame::Instance().UpdateSend();
+	MG_LAG_END(1, "SEND", 0.1);
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+	gAllowCreateElement = false;
+#endif
+#if !defined(FINAL) && !defined(MASTER)
+	tbEndTimer("cMultiGame::UpdateSend");
+#endif
 }
 
 void mp_game_draw_debug_net() {
@@ -4198,7 +4604,7 @@ void mp_game_draw_debug_net() {
 
 	char line[512];
 	wchar wline[512];
-	uint16 basis = TheMPGame.GetPlayerPed(TheMPGame.LocalPlayerID()) ? TheMPGame.GetElementOwnerZone(TheMPGame.GetPlayerPed(TheMPGame.LocalPlayerID()))->m_nBasis : 0;
+	uint16 basis = Game.GetPlayerPed(Game.LocalPlayerID()) ? Game.GetElementOwnerZone(Game.GetPlayerPed(Game.LocalPlayerID()))->m_nBasis : 0;
 	sprintf(line, "[ NS m_vPeers %d m_nPeerCount %d ]  [ PM m_vPlayers %d ] DELTAS/MS %f / %f FRAME %d ACK %d",
 		Game.m_pNetSession->m_vPeers.size(),
 		Game.m_pNetSession->m_nPeerCount,
@@ -4206,10 +4612,81 @@ void mp_game_draw_debug_net() {
 		Game.m_pNetSession->m_Timer.fDeltaS,
 		Game.m_pNetSession->m_Timer.fDeltaMs,
 		basis,
-		TheMPGame.FindPlayerZoneMG()->m_vAck.size());
+		FindPlayerZoneMG()->m_vAck.size());
 
 	AsciiToUnicode(line, wline);
 	CFont::PrintString(x, y, wline);
+}
+
+void mp_game_log_zone_stuff(cInterestZone* pZone)
+{
+	printf("ZONE %d\n", pZone->m_nID);
+	for (uint32 i = 0; i < pZone->m_vElements.size(); i++) {
+		printf("  [%d] %d %s\n", i, pZone->m_vElements[i]->GetID(), GetElementStringType(pZone->m_vElements[i]));
+	}
+	if (!pZone->m_vElements.size())
+		printf("  EMPTY!\n");
+}
+
+void mp_game_draw_debug_zones() {
+	cMultiGame& Game = cMultiGame::Instance();
+	if (!Game.m_pNetSession)
+		return;
+
+	CFont::SetFontStyle(FONT_STANDARD);
+	CFont::SetBackgroundOff();
+	CFont::SetBackGroundOnlyTextOff();
+	CFont::SetWrapx(SCREEN_SCALE_X(DEFAULT_SCREEN_WIDTH));
+	CFont::SetScale(0.85f, 1.0f);
+	CFont::SetCentreOff();
+	CFont::SetCentreSize(SCREEN_SCALE_X(DEFAULT_SCREEN_WIDTH));
+	CFont::SetJustifyOff();
+	CFont::SetColor(CRGBA(50, 80, 180, 255));
+	CFont::SetDropShadowPosition(1);
+	CFont::SetPropOn();
+	CFont::SetDropColor(CRGBA(0, 0, 0, 255));
+
+	float x = 16.0f;
+	float y = 250.0f;
+	float lineHeight = 20.0f;
+
+	char line[512];
+	wchar wline[512];
+	sPed* ped = FindPlayerPedMG();
+	sprintf(line, "[NETSESSION] %d  [GAMEFRAME] %d sPed TIME %d LAG %d",
+		Game.m_pNetSession->m_nCurTime, CTimer::GetFrameCounter(), ped ? ped->m_nTime : 0, Game.m_nLagValue);
+	AsciiToUnicode(line, wline);
+	CFont::PrintString(x, y, wline);
+	y += lineHeight;
+
+	std::map<uint16, cInterestZone*> vZones = Game.m_ZoneManager.GetZones();
+	cInterestZone* pPlayerZone = Game.GetElementOwnerZone(Game.GetPlayerPed(Game.LocalPlayerID()));
+	for (auto& pair : vZones) {
+		uint16 id = pair.first;
+		cInterestZone* pZone = pair.second;
+		if (pZone) {
+			//mp_game_log_zone_stuff(pZone);
+
+			if (pPlayerZone && pZone->m_nID == pPlayerZone->m_nID) {
+				CFont::SetColor(CRGBA(255, 20, 20, 255));
+				sprintf(line, "[PLAYER] %d - m_nBasis %d - m_nCurTime %d - ELEMS %d",
+					pZone->m_nID, pZone->m_nBasis, pZone->m_nCurTime, pZone->m_vElements.size());
+			}
+			else {
+				CFont::SetColor(CRGBA(50, 80, 180, 255));
+				sprintf(line, "[OTHER] %d - m_nBasis %d - m_nCurTime %d - ELEMS %d",
+					pZone->m_nID, pZone->m_nBasis, pZone->m_nCurTime, pZone->m_vElements.size());
+			}
+
+			AsciiToUnicode(line, wline);
+			CFont::PrintString(x, y, wline);
+			y += lineHeight;
+
+			if (y > SCREEN_SCALE_Y(DEFAULT_SCREEN_HEIGHT) - 50) {
+				break;
+			}
+		}
+	}
 }
 
 void* allocFunc(uint32 size) {
@@ -4218,6 +4695,24 @@ void* allocFunc(uint32 size) {
 
 void deleteFunc(void* buff) {
 	operator delete(buff); // base::cMainMemoryManager::Instance()->Free(buff); // op overload
+}
+
+int32 FindPlayerHostID() {
+	return NET_SESSION_DEFAULT_HOST_ID;
+#if 0
+	cMultiGame& Game = cMultiGame::Instance();
+	if (!gIsMultiplayerGame || !Game.m_pNetSession) return -1;
+	tMacAddr hostMac = TheAdhoc.GetMatchingInfo(MP_HOST_INDEX)->m_HostPeerData.peerAddr.mac;
+
+	for (int32 nPeerID = 0; nPeerID < (int32)Game.m_pNetSession->m_vPeers.size(); ++nPeerID)
+	{
+		cNetPeerState* pPeer = Game.m_pNetSession->m_vPeers[nPeerID];
+		if (!pPeer) continue;
+		sPeerState* peerState = PeerManager.GetPeerById(pPeer->m_nPeerId);
+		if (peerState && peerState->m_Addr.mac == hostMac) return peerState->m_nID;
+	}
+	return -1;
+#endif
 }
 
 #ifndef GTA_PSP
@@ -4230,7 +4725,8 @@ double mp_time_now_d() {
 void ClearMultiplayerSplashScreen()
 {
 	gbMultiplayerSplash = false;
-	//byte_8BAD07F = false;
+	//gbLevelSplash = false;
+	TODO();
 }
 
 cNetConfig::cNetConfig() {
@@ -4325,11 +4821,11 @@ inline bool HandleConnectionError(bool bNoPeersConnected, bool bIsOneTeamEmpty, 
 // true - continue CGame::Process // after ProcessMultiGame need be world focused ped for FindPlayerPed()
 /*inline*/ bool ProcessMultiGame()
 {
-#if !defined(FINAL) && !defined(MASTER)
-#define LOADINGSCREEN(s1, s2, splash, param)
-#else
-#define LOADINGSCREEN(s1, s2, splash, param) LoadingScreen(s1, s2, splash, param)
-#endif
+//#if !defined(FINAL) && !defined(MASTER)
+//#define LOADINGSCREEN(s1, s2, splash, bMultiGameChunksNum)
+//#else
+#define LOADINGSCREEN(s1, s2, splash, bMultiGameChunksNum) LoadingScreen(s1, s2, splash, bMultiGameChunksNum)
+//#endif
 
 	cAdhoc& Adhoc = TheAdhoc;
 	cMultiGame& Game = TheMPGame;

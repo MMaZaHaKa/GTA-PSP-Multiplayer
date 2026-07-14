@@ -11,12 +11,12 @@
 
 #ifndef GTA_LIBERTY
 sNetMeter2d* lsc_get_net_meter_2d(lua_State* L) {
-	cMultiGame& pGame = cMultiGame::Instance();
+	cMultiGame& Game = cMultiGame::Instance();
 	void* pData = luaL_checkudata(L, 1, "net2dMeter");
 	if (!pData) return nil;
 	int nHandle = *((int*)pData);
 	if (nHandle == -1) return nil;
-	return (sNetMeter2d*)pGame.GetEntityForHandle(pGame.LocalPlayerID(), nHandle);
+	return (sNetMeter2d*)Game.GetEntityForHandle(Game.LocalPlayerID(), nHandle);
 }
 
 int mp_lsn_FillRatio(lua_State* L) {
@@ -63,13 +63,13 @@ int mp_lsn_nColour(lua_State* L) {
 	sNetMeter2d* pMeter = lsc_get_net_meter_2d(L);
 	if (!pMeter) return 0;
 	if (lua_isnumber(L, 2)) {
-		CRGBA color = CRGBA_UNPACK_LEGACY(lsc_getColor(L, 2));
+		CRGBA color = CRGBA_UNPACK_LEGACY(lsc_getColor(L, 2)); // ARGB
 		pMeter->SetColour(color);
 		return 0;
 	}
 
 	CRGBA* pColour = pMeter->GetColour();
-	lua_pushnumber(L, RGB24_PACK(pColour->r, pColour->g, pColour->b));
+	lua_pushnumber(L, RGB24_PACK(pColour->r, pColour->g, pColour->b)); // ok?
 	return 1;
 }
 
@@ -78,8 +78,8 @@ int mp_lsn_UseTitle(lua_State* L) {
 	if (!pMeter || !lua_isnumber(L, 2)) // lua_isboolean?
 		return 0;
 
-	bool bUseTitle = lua_tonumber(L, 2);
-	pMeter->SetUseTitle(bUseTitle); // (bool)
+	int32 nUseTitle = lua_tonumber(L, 2);
+	pMeter->SetUseTitle((bool)nUseTitle);
 	return 0;
 }
 
@@ -100,6 +100,7 @@ void push_NetMeter2d(lua_State* L, sNetMeter2d* pNetMeter) {
 	lua_setmetatable(L, -2);
 }
 
+#ifdef FIX_BUGS
 int mp_lsn_RemoveNetMeter2d(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	int* pHandleID = (int*)luaL_checkudata(L, 1, "net2dMeter");
@@ -109,6 +110,7 @@ int mp_lsn_RemoveNetMeter2d(lua_State* L) {
 	*pHandleID = -1;
 	return 0;
 }
+#endif
 
 static const luaL_reg ls_net2dMeter_obj[] = {
 	{"FillRatio",   mp_lsn_FillRatio},

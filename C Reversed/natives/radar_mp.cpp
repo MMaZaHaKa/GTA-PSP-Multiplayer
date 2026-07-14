@@ -19,10 +19,10 @@
 
 
 int mp_lsn_RemoveRadarBlip(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	int* pHandleID = (int*)luaL_checkudata(L, 1, "radarblip");
+	cMultiGame& Game = TheMPGame;
+	int32* pHandleID = (int32*)luaL_checkudata(L, 1, "radarblip");
 	if (!pHandleID || *pHandleID == -1) return 0;
-	sRadarBlip* pRadar = (sRadarBlip*)pGame.GetEntityForHandle(pGame.m_pNetSession->m_nSelfPeerID, *pHandleID);
+	sRadarBlip* pRadar = (sRadarBlip*)Game.GetEntityForHandle(Game.m_pNetSession->m_nSelfPeerID, *pHandleID);
 	if (pRadar) delete pRadar;
 	*pHandleID = -1;
 	return 0;
@@ -36,32 +36,32 @@ static const luaL_reg ls_radar_blip[] = {
 VALIDATE_LUA_LIB(ls_radar_blip, (2 + 1), (2 + 1));
 
 
-void mp_set_radarblip_index(lua_State* L, int id) { // mp_set_radarblip_index
-	int* pHandle = (int*)lua_newuserdata(L, sizeof(int));
-	*pHandle = id;
+void lsc_registerRadarBlip(lua_State* L, int32 nHandle) {
+	int32* pHandle = (int32*)lua_newuserdata(L, sizeof(int32));
+	*pHandle = nHandle;
 	luaL_getmetatable(L, "radarblip");
 	lua_setmetatable(L, -2);
 }
 
 /* leftover */
 int mp_lsn_AddSpriteBlipForContactPoint(lua_State* L) {
+	cMultiGame& Game = TheMPGame;
 #ifdef GTA_LIBERTY
-	int nPeerID = lsc_pop_peer_id_from_stack(L, 1, -1);
+	int32 nPeerID = lsc_pop_peer_id_from_stack(L, 1, -1);
 	if (!lua_istable(L, 1)) return 0;
 #else
-	int nPeerID = lua_tonumber(L, 1);
+	int32 nPeerID = lua_tonumber(L, 1);
 #endif
 	CVector vPos;
 	lsc_getVectorFromStack(vPos, L, 1, true);
-	int nUnk = luaL_checknumber(L, 2); // useless
+	int32 nUnk = luaL_checknumber(L, 2); // useless
 	int32 nBlipIndex = TheRadar->SetCoordBlip(eBlipType::BLIP_CONTACT_POINT, vPos, eBlipColour::RADAR_TRACE_MAGENTA, eBlipDisplay::BLIP_DISPLAY_BOTH);
 	TheRadar->ChangeBlipScale(nBlipIndex, 3);
-	cMultiGame& pGame = TheMPGame;
 	sRadarBlip* pBlip = new sRadarBlip(nBlipIndex);
-	cInterestZone* pZone = pGame.m_ZoneManager.GetZoneByPeer(nPeerID);
+	cInterestZone* pZone = Game.m_ZoneManager.GetZoneByPeer(nPeerID);
 	pZone->RegisterElement(pBlip);
-	TheRadar->ms_RadarTrace[TheRadar->GetActualBlipArrayIndex(nBlipIndex)].bMultiplayerState = !pGame.IsLocalPlayer(nPeerID);
-	mp_set_radarblip_index(L, pBlip->GetID());
+	TheRadar->ms_RadarTrace[TheRadar->GetActualBlipArrayIndex(nBlipIndex)].bMultiplayerState = !Game.IsLocalPlayer(nPeerID);
+	lsc_registerRadarBlip(L, pBlip->GetID());
 	return 1;
 }
 
@@ -103,20 +103,20 @@ int mp_lsn_AddBlipForCoord(lua_State* L) {
 	}
 #endif
 
-	cMultiGame& pGame = TheMPGame;
+	cMultiGame& Game = TheMPGame;
 	sRadarBlip* pBlip = new sRadarBlip(nBlipIndex);
-	cInterestZone* pZone = pGame.m_ZoneManager.GetZoneByPeer(nPeerID);
+	cInterestZone* pZone = Game.m_ZoneManager.GetZoneByPeer(nPeerID);
 	pZone->RegisterElement(pBlip);
-	TheRadar->ms_RadarTrace[TheRadar->GetActualBlipArrayIndex(nBlipIndex)].bMultiplayerState = !pGame.IsLocalPlayer(nPeerID);
-	mp_set_radarblip_index(L, pBlip->GetID());
+	TheRadar->ms_RadarTrace[TheRadar->GetActualBlipArrayIndex(nBlipIndex)].bMultiplayerState = !Game.IsLocalPlayer(nPeerID);
+	lsc_registerRadarBlip(L, pBlip->GetID());
 	return 1;
 }
 
 int mp_lsn_UpdateBlipCoord(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	int* pHandleID = (int*)luaL_checkudata(L, 1, "radarblip");
+	cMultiGame& Game = TheMPGame;
+	int32* pHandleID = (int32*)luaL_checkudata(L, 1, "radarblip");
 	if (!pHandleID || *pHandleID == -1) return 0;
-	sRadarBlip* pBlip = (sRadarBlip*)pGame.GetEntityForHandle(pGame.m_pNetSession->m_nSelfPeerID, *pHandleID);
+	sRadarBlip* pBlip = (sRadarBlip*)Game.GetEntityForHandle(Game.LocalPlayerID(), *pHandleID);
 	if (pBlip)
 	{
 		CVector vPos;
@@ -130,14 +130,14 @@ int mp_lsn_UpdateBlipCoord(lua_State* L) {
 /* leftover */
 int mp_lsn_AddLocalBlipForCoord(lua_State* L) {
 #ifdef GTA_LIBERTY
-	int nPeerID = lsc_pop_peer_id_from_stack(L, 1, -1);
+	int32 nPeerID = lsc_pop_peer_id_from_stack(L, 1, -1);
 #endif
 #if !defined(FIX_BUGS) && !defined(GTA_LIBERTY)
 	if (!lua_istable(L, 1)) return 0; // leftover
 #endif
 	CVector vPos;
 	lsc_getVectorFromStack(vPos, L, 1, true);
-	int nColor = (lua_gettop(L) >= 2)  ? lua_tonumber(L, 2) : 5;
+	int32 nColor = (lua_gettop(L) >= 2)  ? lua_tonumber(L, 2) : 5;
 	int32 nBlipIndex = TheRadar->SetCoordBlip(eBlipType::BLIP_COORD, vPos, nColor, eBlipDisplay::BLIP_DISPLAY_BOTH);
 	if (lua_gettop(L) >= 2) {
 		int32 nIconID = lua_tonumber(L, 3);
@@ -149,25 +149,26 @@ int mp_lsn_AddLocalBlipForCoord(lua_State* L) {
 }
 
 int mp_lsn_RemoveLocalRadarBlip(lua_State* L) {
-	int nIndex = lua_tonumber(L, 1);
+	int32 nIndex = lua_tonumber(L, 1);
 	sRadarTrace* pTrace = &TheRadar->ms_RadarTrace[TheRadar->GetActualBlipArrayIndex(nIndex)];
 	pTrace->bInUse = false;
 	pTrace->m_eBlipType = eBlipType::BLIP_NONE;
 	pTrace->eBlipDisplay = eBlipDisplay::BLIP_DISPLAY_NEITHER;
+	pTrace->bUnused = false;
 	pTrace->m_eRadarSprite = eRadarSprite::RADAR_SPRITE_NONE;
 	return 0;
 }
 
 int mp_lsn_SetBlipVisibleForPlayerState(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	int* pHandleID = (int*)luaL_checkudata(L, 1, "radarblip");
+	cMultiGame& Game = TheMPGame;
+	int32* pHandleID = (int32*)luaL_checkudata(L, 1, "radarblip");
 	if (!pHandleID || *pHandleID == -1) return 0;
-	sRadarBlip* pBlip = (sRadarBlip*)pGame.GetEntityForHandle(pGame.m_pNetSession->m_nSelfPeerID, *pHandleID);
+	sRadarBlip* pBlip = (sRadarBlip*)Game.GetEntityForHandle(Game.LocalPlayerID(), *pHandleID);
 	if (!pBlip) return 0;
 	uint8 nSlot = lua_tonumber(L, 2);
 	bool bEnabled = lua_toboolean(L, 3);
 	sRadarTrace* pTrace = &TheRadar->ms_RadarTrace[pBlip->m_nBlipIndex];
-	uint8 mask = bEnabled ? (pTrace->m_nPlayerMaskMG | (1 << nSlot)) : (pTrace->m_nPlayerMaskMG & ~(1 << nSlot));
+	uint8 mask = bEnabled ? (pTrace->m_nPlayerMaskMG | BIT(nSlot)) : (pTrace->m_nPlayerMaskMG & ~BIT(nSlot));
 	pTrace->m_nPlayerMaskMG = mask;
 	return 0;
 }
@@ -251,7 +252,7 @@ int mp_lsn_DrawPickups(lua_State* L) {
 	CPlayerPed* pPed = FindPlayerPed();
 	static int32 blip_ids[NUMPICKUPS];
 	static bool has_init = false;
-	if (has_init) {
+	if (!has_init) { // gcc?
 		memset(blip_ids, 0, sizeof(blip_ids));
 		has_init = true;
 	}
@@ -297,14 +298,14 @@ int mp_lsn_DrawPickups(lua_State* L) {
 			}
 		}
 	}
-	return 0;
+	return 1; // not 0?
 }
 
 int mp_lsn_SetRadarBlipColour(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	int* pHandleID = (int*)luaL_checkudata(L, 1, "radarblip");
+	cMultiGame& Game = TheMPGame;
+	int32* pHandleID = (int32*)luaL_checkudata(L, 1, "radarblip");
 	if (!pHandleID || *pHandleID == -1) return 0;
-	sRadarBlip* pBlip = (sRadarBlip*)pGame.GetEntityForHandle(pGame.LocalPlayerID(), *pHandleID);
+	sRadarBlip* pBlip = (sRadarBlip*)Game.GetEntityForHandle(Game.LocalPlayerID(), *pHandleID);
 	if (!pBlip)
 		return 0;
 	uint32 nColor = lua_tonumber(L, 2);
@@ -335,13 +336,13 @@ int mp_lsn_ShowRadar(lua_State* L) {
 
 #ifndef GTA_LIBERTY
 int mp_lsn_SetRadarToTeamColour(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
-	int* pHandleID = (int*)luaL_checkudata(L, 1, "radarblip");
+	cMultiGame& Game = TheMPGame;
+	int32* pHandleID = (int32*)luaL_checkudata(L, 1, "radarblip");
 	if (!pHandleID || *pHandleID == -1) return 0;
-	sRadarBlip* pBlip = (sRadarBlip*)pGame.GetEntityForHandle(pGame.LocalPlayerID(), *pHandleID);
+	sRadarBlip* pBlip = (sRadarBlip*)Game.GetEntityForHandle(Game.LocalPlayerID(), *pHandleID);
 	if (!pBlip) return 0;
 	uint8 nTeamId = lua_tonumber(L, 2);
-	CRGBA col = *pGame.GetColor(nTeamId);
+	CRGBA col = *Game.GetColor(nTeamId);
 	TheRadar->ms_RadarTrace[pBlip->m_nBlipIndex].m_nColor = CRGBA_PACK(col.r, col.g, col.b, col.a);
 	return 0;
 }
@@ -368,7 +369,6 @@ VALIDATE_LUA_LIB(ls_radar_lib, (12 + 1), (11 + 1));
 
 
 void lscript_open_radar() {
-	cMultiGame& pGame = TheMPGame;
 	cLWrapper& wrapper = cLWrapper::Instance();
 	wrapper.CreateLibrary(ls_radar_blip, "radarblip");
 	wrapper.CreateGlobalLibrary(ls_radar_lib, nil);

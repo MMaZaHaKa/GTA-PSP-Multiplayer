@@ -86,9 +86,9 @@ public:
 	inline uint8* GetBytes() { return bytes; }
 	inline unsigned char* GetBytesSCE() { return (unsigned char*)bytes; }
 	//inline unsigned char* GetBytesSCESDK() { return (unsigned char*)bytes; }
-//#ifndef GTA_PSP
-//	inline SceNetEtherAddr* GetBytesSCE() { return (SceNetEtherAddr*)bytes; } // ppsspp
-//#endif
+#ifndef GTA_PSP
+	inline SceNetEtherAddr* GetBytesProAdhoc() { return (SceNetEtherAddr*)bytes; } // ppsspp
+#endif
 	//inline const unsigned char* GetBytesSCE() const { return (const unsigned char*)bytes; }
 };
 
@@ -106,6 +106,12 @@ uint32_t hash_combine(uint32_t seed, uint32_t value);
 
 #define MP_HOST_INDEX (-1)
 #define BROADCAST_PEER_GROUPID (-1) // EVERYONE_PEER_GROUPID
+#define BROADCAST_TEAM_A_GROUPID (-2)
+#define BROADCAST_TEAM_B_GROUPID (-3)
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+#define BROADCAST_VANILLA_DEVICE_GROUPID (-4)
+#define BROADCAST_CUSTOM_DEVICE_GROUPID (-5)
+#endif
 
 #ifdef GTA_LIBERTY
 #define GTA_VER_V(lcsval, vcsval) (lcsval)

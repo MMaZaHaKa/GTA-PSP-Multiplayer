@@ -34,28 +34,48 @@ inline void open_model(lua_State* L) {
 
 int lsn_loadCutscene(lua_State* L) {
 	const char* name = luaL_checklstring(L, 1, NULL);
+#ifdef GTA_LIBERTY
 	CCutsceneMgr::LoadCutsceneData(name);
+#else
+	TheCutscene->LoadCutsceneData(name);
+#endif
 	return 0;
 }
 
 int lsn_isCutsceneLoaded(lua_State* L) {
+#ifdef GTA_LIBERTY
 	lua_pushboolean(L, CCutsceneMgr::ms_cutsceneLoadStatus == CUTSCENE_LOADED);
+#else
+	lua_pushboolean(L, TheCutscene->m_cutsceneLoadStatus == CUTSCENE_LOADED);
+#endif
 	return 1;
 }
 
 int lsn_startCutscene(lua_State* L) {
+#ifdef GTA_LIBERTY
 	CCutsceneMgr::StartCutscene();
+#else
+	TheCutscene->StartCutscene();
+#endif
 	return 0;
 }
 
 int lsn_hasCutsceneFinished(lua_State* L) {
+#ifdef GTA_LIBERTY
 	lua_pushboolean(L, CCutsceneMgr::HasCutsceneFinished());
+#else
+	lua_pushboolean(L, TheCutscene->HasCutsceneFinished());
+#endif
 	return 1;
 }
 
 int lsn_clearCutscene(lua_State* L) {
 	debug("Clear lua cutscene\n");
+#ifdef GTA_LIBERTY
 	CCutsceneMgr::DeleteCutsceneData();
+#else
+	TheCutscene->DeleteCutsceneData();
+#endif
 	CTheScripts::Shutdown();
 	return 0;
 }
@@ -94,6 +114,7 @@ inline void open_cutscene(lua_State* L) {
 int mp_lsn_setVectorForSinglePlayerScript(lua_State* L) {
 	CVector vec;
 	lsc_getVectorFromStack(vec, L, 1, true);
+	gVecForSinglePlayerScript = vec;
 	return 0;
 }
 
@@ -179,7 +200,7 @@ inline void open_vector(lua_State* L) {
 
 
 int mp_lsn_SetTeamScore(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
+	cMultiGame& Game = TheMPGame;
 	const int nTeamID = lua_tonumber(L, 1);
 	const int nScore = lua_tonumber(L, 2);
 	net::pckt_set_team_score packet;
@@ -187,19 +208,22 @@ int mp_lsn_SetTeamScore(lua_State* L) {
 	packet.pckt_id = gtMP_PacketIDs.set_team_score.pckt_id;
 	packet.score = nScore;
 	packet.team_id = nTeamID;
-	pGame.m_anTeamScore[nTeamID] = nScore;
-	pGame.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
+	Game.m_anTeamScore[nTeamID] = nScore;
+	Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
+#ifdef FIX_BUGS
 	return 0;
+#else
+	return 1;
+#endif
 }
 
 int mp_lsn_getTeamScore(lua_State* L) {
-	const int nTeamID = lua_tonumber(L, 1);
-	const int nScore = TheMPGame.m_anTeamScore[nTeamID];
+	const int32 nTeamID = lua_tonumber(L, 1);
+	const int32 nScore = TheMPGame.m_anTeamScore[nTeamID];
 	lua_pushnumber(L, nScore);
 	return 1;
 }
 
-/* TODO: stub */
 int mp_lsn_isEventStackEmpty(lua_State* L) {
 	lua_pushboolean(L, TheMPGame.m_pEventStack->isEmpty());
 	return 1;
@@ -209,20 +233,21 @@ int mp_lsn_getEvent(lua_State* L) {
 	cEventStack* pStack = TheMPGame.m_pEventStack;
 	if (!pStack->isEmpty()) {
 		lua_pushnumber(L, pStack->pop());
-		return 1;
 	}
-	lua_pushnil(L);
+	else {
+		lua_pushnil(L);
+	}
 	return 1;
 }
 
 void lsc_send_event(int id) {
-	cMultiGame& pGame = TheMPGame;
+	cMultiGame& Game = TheMPGame;
 	net::pckt_send_game_event packet;
 	packet.pckt_size = sizeof(net::pckt_send_game_event);
 	packet.pckt_id = gtMP_PacketIDs.send_game_event.pckt_id;
 	packet.event = id;
-	pGame.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
-	on_recv_send_game_event(packet, pGame.m_pNetSession->m_nSelfPeerID, 0, true);
+	Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
+	on_recv_send_game_event(packet, Game.LocalPlayerID(), 0, true);
 }
 
 int mp_lsn_sendEvent(lua_State* L) {
@@ -261,9 +286,7 @@ int mp_lsn_maskEventNumber(lua_State* L) {
 }
 
 int mp_lsn_setTeamTimer(lua_State* L) {
-	if (!lua_isnumber(L, 1) || !lua_isnumber(L, 2)) {
-		return 0;
-	}
+	if (!lua_isnumber(L, 1) || !lua_isnumber(L, 2)) return 0;
 	int32 nTeamID = lua_tonumber(L, 1);
 	int32 nTimer = lua_tonumber(L, 2);
 	TheMPGame.m_anTeamTimer[nTeamID] = nTimer;
@@ -359,7 +382,7 @@ void lscript_open_main() {
 	cLWrapper& wrapper = cLWrapper::Instance();
 	lua_State* pVM = wrapper.m_luaVM;
 	open_vector(pVM);
-	lscript_open_ped();
+	lscript_open_entity();
 	lscript_open_player();
 	lscript_open_vehicle();
 	lscript_open_radar();

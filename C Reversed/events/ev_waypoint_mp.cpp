@@ -12,12 +12,15 @@
 
 void sWaypoint::OnSetWaypoint(net::pckt_set_waypoint& packet, int sender, uint16 time, bool bFromRing) // ID 52
 {
+	CVector vecPos = packet.vecPos;
+	CVector vecLookAt = packet.vecLookAt;
+	CVector vecHitSize = packet.vecHitSize;
 	sWaypointElement* elem = new sWaypointElement(
 		sender,
 		packet.nWaypointID,
-		*(CVector*)&packet.vecPos,
-		*(CVector*)&packet.vecLookAt,
-		*(CVector*)&packet.vecHitSize,
+		vecPos,
+		vecLookAt,
+		vecHitSize,
 		packet.colour,
 		packet.bShowArrow,
 		packet.fMarkerSize,

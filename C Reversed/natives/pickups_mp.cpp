@@ -15,35 +15,25 @@
 
 
 int mp_lsn_RemovePickup(lua_State* L) {
-	int32* pData = (int32*)luaL_checkudata(L, 1, "pickup");
-	if (pData == nil)
-		return 0;
-	int32 nHandle = (int32)*pData;
-	if (nHandle != -1) {
-		CPickups::RemovePickUp(nHandle);
-		*pData = -1;
-	}
+	int32* pHandleID = (int32*)luaL_checkudata(L, 1, "pickup");
+	if (!pHandleID || *pHandleID == -1) return 0;
+	CPickups::RemovePickUp(*pHandleID);
+	*pHandleID = -1;
 	return 0;
 }
 
 int mp_lsn_IsCollectable(lua_State* L) {
-	int32* pData = (int32*)luaL_checkudata(L, 1, "pickup");
-	if (pData == nil)
-		return 0;
-	int32 nHandle = (int32)*pData;
-	if (nHandle == -1)
-		return 0;
-	int32 nIndex = CPickups::GetActualPickupIndex(nHandle);
+	int32* pHandleID = (int32*)luaL_checkudata(L, 1, "pickup");
+	if (!pHandleID || *pHandleID == -1) return 0;
+	int32 nIndex = CPickups::GetActualPickupIndex(*pHandleID);
 	lua_pushboolean(L, (!CPickups::aPickUps[nIndex].m_bRemoved));
 	return 1;
 }
 
 int mp_lsn_Position(lua_State* L) {
-	int32* pData = (int32*)luaL_checkudata(L, 1, "pickup");
-	if (pData == NULL) return 0;
-	int32 nHandle = (int32)*pData;
-	if (nHandle == -1) return 0;
-	int32 nIndex = CPickups::GetActualPickupIndex(nHandle);
+	int32* pHandleID = (int32*)luaL_checkudata(L, 1, "pickup");
+	if (!pHandleID || *pHandleID == -1) return 0;
+	int32 nIndex = CPickups::GetActualPickupIndex(*pHandleID);
 	CPickup* pEntry = &CPickups::aPickUps[nIndex];
 	lsc_pushVuVector(L, pEntry->m_vecPos);
 	return 1;
@@ -58,8 +48,8 @@ static const luaL_reg ls_pickup_lib[] = {
 VALIDATE_LUA_LIB(ls_pickup_lib, (3 + 1), (3 + 1));
 
 void lsc_registerPickup(lua_State* L, int32 nHandle) {
-	int32* data = (int32*)lua_newuserdata(L, sizeof(int32));
-	*data = nHandle;
+	int32* pHandle = (int32*)lua_newuserdata(L, sizeof(int32));
+	*pHandle = nHandle;
 	luaL_getmetatable(L, "pickup");
 	lua_setmetatable(L, -2);
 }
@@ -74,33 +64,35 @@ int mp_lsn_CreatePickup(lua_State* L) {
 	int nQuantity = lua_tonumber(L, 3);
 	bool bIsPowerUp = isPickupPowerup(nModelID);
 	if (!Game.bPowerUpOn && bIsPowerUp)
-#ifdef FIX_BUGS
-		return 0;
-#else
+//#ifdef FIX_BUGS
+//		return 0;
+//#else
 		return 1;
-#endif
+//#endif
 #ifndef GTA_LIBERTY
 	bIsPowerUp = bIsPowerUp || (nModelID == MI_PICKUP_BRIEFCASE);
 #endif
 	uint8 eType = bIsPowerUp ? ePickupType::PICKUP_NETWORK_1 : ePickupType::PICKUP_ON_STREET;
-	int32 nHandle = CPickups::GenerateNewOne(pos, nModelID, eType, nQuantity, 0, false, nil);
+	int32 nHandle = CPickups::GenerateNewOne(pos, nModelID, eType, nQuantity, 0, false);
 	lsc_registerPickup(L, nHandle);
 	sPickup* pElem = new sPickup(nHandle);
 	cInterestZone* pZone = Game.m_ZoneManager.GetZoneByPeer(MP_HOST_INDEX);
 	pZone->RegisterElement(pElem);
-	return 1; // 1? not push
+	return 1;
 }
 
-/* TODO(MP)#2 */
 int mp_lsn_DoesPowerupExist(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	int32 nCount = 0;
-	for (int32 nPlayerID = 0; nPlayerID < 10; nPlayerID++) {
-		sPlayer* pPlayer = cMultiGame::Instance().GetPlayer(nPlayerID);
-		// TODO(MP): missing code
+	uint32 nMaxSize = Max(Game.m_pNetSession->m_vPeers.size(), Game.LocalPlayerID() + 1);
+	for (int32 nPeerID = 0; nPeerID < nMaxSize; nPeerID++) {
+		sPlayer* pPlayer = Game.GetPlayer(nPeerID);
+		if (!pPlayer) continue;
+		if (pPlayer->GetSync().player->m_nPickups != ePowerupType::POWERUP_NONE)
+			nCount++;
 	}
 	if (nCount == 0) {
-		for (int nIndex = 0; nIndex < NUMPICKUPS; nIndex++) {
+		for (int32 nIndex = 0; nIndex < NUMPICKUPS; nIndex++) {
 			CPickup* pEntry = &CPickups::aPickUps[nIndex];
 			if (pEntry->m_eType == PICKUP_NETWORK_1 || pEntry->m_eType == PICKUP_NETWORK_2)
 				nCount++;
@@ -144,5 +136,5 @@ VALIDATE_LUA_LIB(ls_pickups_lib, (5 + 1), (3 + 1));
 void lscript_open_pickups() {
 	cLWrapper& wrapper = cLWrapper::Instance();
 	wrapper.CreateLibrary(ls_pickup_lib, "pickup");
-	wrapper.CreateGlobalLibrary(ls_pickups_lib, nullptr);
+	wrapper.CreateGlobalLibrary(ls_pickups_lib, nil);
 }

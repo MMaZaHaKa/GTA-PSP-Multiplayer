@@ -391,7 +391,62 @@ void lsn_simsch_debug_render() {
 		snprintf(line, sizeof(line), "... and %d more actions", total - maxLines);
 		AsciiToUnicode(line, wline);
 		CFont::PrintString(x, y, wline);
+		y += ystep;
 	}
+
+	//return;
+	//// ====================== ENTITY TRACK TABLE ======================
+	//CFont::SetColor(CRGBA(20, 240, 20, 255));
+	//snprintf(line, sizeof(line), "[ENTITY TRACK]  (weak table __mode=\"k\")");
+	//AsciiToUnicode(line, wline);
+	//CFont::PrintString(x, y, wline);
+	//y += ystep;
+
+	//CFont::SetColor(CRGBA(200, 200, 200, 255));
+
+	//luaL_getmetatable(L, "EntityTrack");
+	//if (lua_istable(L, -1)) {
+	//	int entity_idx = lua_gettop(L);
+	//	int32 et_total = 0;
+	//	int32 et_printed = 0;
+
+	//	lua_pushnil(L);
+	//	while (lua_next(L, entity_idx) != 0 && et_printed < maxLines) {
+	//		++et_total;
+
+	//		if (lua_islightuserdata(L, -2)) {  // key = handle
+	//			uint32 nHandle = (uint32)lua_touserdata(L, -2);
+
+	//			uint8 owner = TRACKED_ENTITY_OWNER(nHandle);
+	//			uint16 id = TRACKED_ENTITY_ID(nHandle);
+	//			bool tracked = TRACKED_ENTITY_TRACK(nHandle);
+
+	//			snprintf(line, sizeof(line), "0x%08X  owner=0x%02X  id=0x%04X  track=%d",
+	//				nHandle, owner, id, tracked ? 1 : 0);
+
+	//			AsciiToUnicode(line, wline);
+	//			CFont::PrintString(x, y, wline);
+	//			y += ystep;
+	//			++et_printed;
+	//		}
+
+	//		lua_pop(L, 1);  // pop value
+	//	}
+
+	//	if (et_total > maxLines) {
+	//		snprintf(line, sizeof(line), "... and %d more tracked entities", et_total - maxLines);
+	//		AsciiToUnicode(line, wline);
+	//		CFont::PrintString(x, y, wline);
+	//		y += ystep;
+	//	}
+	//}
+	//else {
+	//	snprintf(line, sizeof(line), "(EntityTrack not found or not a table)");
+	//	AsciiToUnicode(line, wline);
+	//	CFont::PrintString(x, y, wline);
+	//	y += ystep;
+	//}
+	//lua_pop(L, 1);  // pop EntityTrack metatable
 
 	lua_settop(L, savedTop);
 }

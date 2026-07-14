@@ -29,6 +29,9 @@
 #include "multiplayer/elements/sTextSprite.h"
 #include "multiplayer/Lobby.h"
 #include "multiplayer/LobbyPed.h"
+#if defined(ADHOCCTL_USE_CUSTOM_IDENT) && !defined(GTA_PSP)
+#include "multiplayer/net/emu/proAdhoc.h"
+#endif
 
 
 #define UNPACK_COLOR(c) c->alpha, c->red, c->green, c->blue
@@ -627,10 +630,7 @@ void CHud::DrawStatusForMultiplayer() // inlined in VCS
 extern RwTexture* gpCrossHairTex; // TODO: this suggest us to move this func to CHud
 
 void CHud::DrawHudForMultiplayer()
-{ // https://prnt.sc/xIHGasDV83nL
-    if (!gIsMultiplayerGame)
-        return;
-
+{
     if (gbMP_DrawPauseScreen)
     {
         CSprite2d sprite;
@@ -684,16 +684,17 @@ void CHud::DrawHudForMultiplayer()
     {
         if (FindPlayerPed()->IsPlayerNotInActivityZone())
         {
-            //cplayerped_sub_894873C(FindPlayerPed()); // todo
-            CHud::PrintMPLeftActivityZone(); // each frame add timed message, bug? no once?
+            int32 nTime = (((5000.0f - FindPlayerPed()->GetInActivityZoneTime()) / 1000.0f) + 1.0f);
+            nTime = Max(nTime, 0);
+            CHud::PrintMPLeftActivityZone(nTime); // each frame add timed message, bug? no once?
         }
     }
 #endif
-    mp_update_sprites();
+    mp_update_sprites(); // vcs in hud, custom here, but ok
 }
 
 #ifndef GTA_LIBERTY
-void CHud::PrintMPLeftActivityZone()
+void CHud::PrintMPLeftActivityZone(int32 nTime)
 {
     CMessages::AddBigMessage(TheText.Get("MPTURNB"), 20000, 7); // You left the play area!
 }
@@ -781,10 +782,25 @@ void drawPlayerList(int nPosX, int nMaxTeams)
                 CRGBA nameColor(MP_TEXT_COLOUR, nAlpha);
                 bool bSelfPeer = (peer.macAddr == Adhoc.GetPlayerMacAddress());
                 bool bIsHost = (Adhoc.GetMatchingInfo(MP_HOST_INDEX)->m_HostPeerData.peerAddr.mac == peer.macAddr);
+
                 if (bSelfPeer)
                     nameColor = CRGBA(COLOR_YELLOW, nAlpha); // self yellow color
                 else if (GANG_MODE)
                     nameColor = *Game.GetColor(nTeamID);
+
+#if defined(ADHOCCTL_USE_CUSTOM_IDENT) && !defined(GTA_PSP)
+                bool bLocal = false;
+                SceNetAdhocctlPeerInfo* pProAdhocPeer = getPeerInfo(peer.macAddr.GetBytesProAdhoc(), &bLocal);
+                bool bVanilaPeer = (pProAdhocPeer && ((pProAdhocPeer->flags & ADHOCCTL_CUSTOM_FLAG) == 0));
+
+                CSprite2d* spr = nil;
+                if (bVanilaPeer)
+                    spr = &FrontEndMenuManager->m_aFrontEndSprites[MENUSPRITE_PSP];
+                else
+                    spr = &FrontEndMenuManager->m_aFrontEndSprites[MENUSPRITE_PC];
+                    spr->Draw(MP_MENU_X(nPosX) - 32, SCALE_Y(MP_POS_Y_DEFAULT + nOffsetY), 20 * SCREEN_ASPECT_RATIO, 20 * SCREEN_ASPECT_RATIO, CRGBA(255, 255, 255, 255));
+                    //spr->Draw(MP_MENU_X(nPosX) - 32, SCALE_Y(MP_POS_Y_DEFAULT + nOffsetY), 20 * SCREEN_ASPECT_RATIO, 20 * SCREEN_ASPECT_RATIO, nameColor); // nick colour
+#endif
 
                 CFont::SetColor(nameColor);
                 base::string playerName;
@@ -1058,9 +1074,9 @@ void cLobby::DrawJoinGameScreen()
 #endif
 
     // from CStreaming::LoadPedbanksForMultiplayer()
-    for (int32 peeridx = 0; peeridx < MP_NUM_PEERS; peeridx++)
+    for (int32 i = 0; i < MP_NUM_MATCHING_GROUPS; i++)
     {
-        tLobbyRemoteInfo* pData = TheAdhoc.GetMatchingInfo(peeridx);
+        tLobbyRemoteInfo* pData = TheAdhoc.GetMatchingInfo(i);
         if (pData == nil)
             continue;
 
@@ -1094,6 +1110,20 @@ void cLobby::DrawJoinGameScreen()
         nYOffset += 16;
         DECLARE_ROW_Y(nYOffset, nServerIndex);
         CFont::PrintString(sBuf_1, 0, MP_MENU_X(13), SCALE_Y(nYOffset)); // host player name
+
+//#if defined(ADHOCCTL_USE_CUSTOM_IDENT) && !defined(GTA_PSP) // device type
+//        bool bLocal = false;
+//        SceNetAdhocctlPeerInfo* pProAdhocPeer = getPeerInfo(pData->m_HostPeerData.peerAddr.mac.GetBytesProAdhoc(), &bLocal);
+//        bool bVanilaPeer = (pProAdhocPeer && ((pProAdhocPeer->flags & ADHOCCTL_CUSTOM_FLAG) == 0));
+//
+//        CSprite2d* spr = nil;
+//        if (bVanilaPeer)
+//            spr = &FrontEndMenuManager->m_aFrontEndSprites[MENUSPRITE_PSP];
+//        else
+//            spr = &FrontEndMenuManager->m_aFrontEndSprites[MENUSPRITE_PC];
+//        spr->Draw(MP_MENU_X(103 - 32), SCALE_Y(nYOffset), 20 * SCREEN_ASPECT_RATIO, 20 * SCREEN_ASPECT_RATIO, CRGBA(255, 255, 255, 255));
+//#endif
+
 #ifdef GTA_LIBERTY
         strcpy(sBuf, "GS_G0"); // game type name (LIBETY CITY SURVIVOR,..)
         sBuf[4] = '1' + pData->m_GameType;
@@ -1101,12 +1131,14 @@ void cLobby::DrawJoinGameScreen()
         sprintf(sBuf, "GS_G%d", pData->m_GameType + 1); // game type name (VICE CITY SURVIVOR,..)
 #endif
         CFont::PrintString(TheText.Get(sBuf), 0, MP_MENU_X(103), SCALE_Y(nYOffset));
+
 #ifdef GTA_LIBERTY
-        CFont::PrintString(TheText.Get(aLocations[pData->gameLocation]), 0, MP_MENU_X(283), SCALE_Y(nYOffset));
+        CFont::PrintString(TheText.Get(aLocations[pData->gameLocation]), 0, MP_MENU_X(283), SCALE_Y(nYOffset)); // location name
 #else
         sprintf(sBuf, "MPLOC%d", pData->m_GameLocation); // location name
         CFont::PrintString(TheText.Get(sBuf), 0, MP_MENU_X(283), SCALE_Y(nYOffset));
 #endif
+
         sprintf(sBuf, "%i", nPlayerCount);
         AsciiToUnicode(sBuf, sBuf_1);
         CFont::PrintString(sBuf_1, 0, MP_MENU_X(393), SCALE_Y(nYOffset)); // player count

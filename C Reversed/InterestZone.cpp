@@ -23,7 +23,7 @@
 #include "multiplayer/elements/sQuadBike.h"			// 11
 #include "multiplayer/elements/sNetMeter2d.h"		// 12
 #endif
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 #include "multiplayer/elements/sObject.h"			// 13
 #endif
 
@@ -36,23 +36,34 @@
 // Recv
 #define MP_ZONE_SEQ_FLAG			(0x80)		// BIT(7)
 #define MP_ZONE_SEQ_MASK			(0x7F)		// 0b01111111
-#define MP_ENTITY_CREATE_FLAG		(0x8000U)	// BIT(15)
+#define MP_ENTITY_CREATE_FLAG		(0x8000U)	// BIT(15) // MP_ENTITY_FULL_STATE
 #define MP_ENTITY_CREATE_MASK		(0x7FFFU)
 #define MP_ENTITY_DESTROY_TYPE		(0xFF)
 #define MP_ENTITY_TRANSFER_FLAG		(0x80)		// BIT(7)
 #define MP_ENTITY_TRANSFER_MASK		(0x7F)
 
 // Send
-#define MP_PACKET_SPLIT_SIZE		(1024)	// trigger to stop add sync into a buffer, start into new packet (memmove)
-#define MP_PICKUP_SEND_TIME			(2000)
+#define MP_PACKET_SPLIT_SIZE		(1024)		// trigger to stop add sync into a buffer, start into new packet (memmove)
+#define MP_FULL_SYNC_SEND_INTERVAL	(2000)		// old MP_PICKUP_SEND_TIME
 #define MP_PICKUP_SEND_MASK			(0x3F)		// 0b00111111
 #define MP_ENTITY_FINAL_FLAG		(0x80000000U)
 
+//#ifdef GTA_PC // recheck sync time psp fps/pc fps for holding base sync
+//#define MP_DISPOSE_SYNC_DELTA		(60)
+//#else
+#ifdef GTA_LIBERTY
 #define MP_DISPOSE_SYNC_DELTA		(60) // NET_SESSION_60 ?
+#else
+#define MP_DISPOSE_SYNC_DELTA		(30)
+#endif
+//#endif
 
 cInterestZone::cInterestZone(int16 nID) {
 	m_nID = nID;
 	m_nCurTime = 0;
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+	m_nCurTimeCustom = 0;
+#endif
 	m_bHasPos = false;
 	m_nBasis = 0;
 	m_vPeers = std::vector<tZonePeer>();
@@ -185,10 +196,16 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 #endif
 	float fCurTime = ((float)m_nCurTime) - delta;
 	m_nCurTime = (uint32)fCurTime;
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+	m_nCurTimeCustom = (uint32)fCurTime;
+#endif
 
 	if (fCurTime < 0.0f)
 	{
 		m_nCurTime = 0;
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+		m_nCurTimeCustom = 0;
+#endif
 		sWriteSyncStream stream;
 		net::pckt_game_state& packet = *(net::pckt_game_state*)&stream;
 		packet.pckt_size = sizeof(net::pckt_game_state);
@@ -196,6 +213,15 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 		packet.sequence = 0;
 		packet.zone = m_nID;
 		m_nBasis = nCurFrame;
+
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+		sWriteSyncStream streamCustom; // BROADCAST_CUSTOM_DEVICE_GROUPID
+		net::pckt_game_state& packetCustom = *(net::pckt_game_state*)&streamCustom;
+		packetCustom.pckt_size = sizeof(net::pckt_game_state);
+		packetCustom.pckt_id = gtMP_PacketIDs.game_state.pckt_id;
+		packetCustom.sequence = 0;
+		packetCustom.zone = m_nID;
+#endif
 
 		// Collect intersection of frames from all peers acks
 		std::vector<uint16> combinedFrames;
@@ -219,7 +245,7 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 				uint16 maxFrame = combinedFrames.back();
 				m_nBasis = maxFrame;
 				if (static_cast<int16>(nCurFrame - maxFrame) > MP_DISPOSE_SYNC_DELTA) {
-					debug("discarding old deltas: %i for time == %d\n", nCurFrame - maxFrame, nCurFrame);
+					debug("discarding old deltas: %i for time == %d\n", static_cast<int16>(nCurFrame - maxFrame), nCurFrame);
 					m_nBasis = nCurFrame;
 					for (auto& ent : m_vEntities) {
 						ent.nEntityID &= ~MP_ENTITY_FINAL_FLAG;
@@ -230,11 +256,11 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 			// Now remove old acks from each peer
 			for (int32 i = 0; i < m_vPeers.size(); ++i)
 			{
-				auto& peer = m_vPeers[i];
+				tZonePeer& peer = m_vPeers[i];
 				auto& acks = peer.acks;
 				if (acks.empty()) {
-					debug("Peer %i : Last ack FUCK UP\n", i);
-					debug("Peer %i : Last ack FUCK UP\n", i);
+					INTEREST_ZONE_LOG(1, "Peer %i : Last ack FUCK UP\n", i);
+					INTEREST_ZONE_LOG(1, "Peer %i : Last ack FUCK UP\n", i);
 					continue;
 				}
 				auto it = std::lower_bound(acks.begin(), acks.end(), m_nBasis);
@@ -254,6 +280,9 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 
 		// Write basis
 		stream.WriteU16(m_nBasis);
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+		streamCustom.WriteU16(m_nBasis);
+#endif
 #ifdef FIX_BUGS
 		INTEREST_ZONE_LOG(1, "FRAME %i BASIS %i : Zone %i\n", nCurFrame, m_nBasis, m_nID);
 #else
@@ -261,20 +290,30 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 #endif
 		// --mazahaka: запоминаем позицию перед ack data чтобы в 1+ seq могли ack перезаписать нахуй, а в recv парсим первый seq
 		uint32 pos_ack_count = stream.pckt_size;  // Position after basis, before ack count // data start
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+		uint32 pos_ack_count_custom = streamCustom.pckt_size;
+#endif
 
 		// Write ack count
 		uint8 ackCount = static_cast<uint8>(m_vAck.size());
 		stream.WriteU8(ackCount);
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+		streamCustom.WriteU8(ackCount);
+#endif
 #if !defined(FINAL) && !defined(MASTER)
 		if (!ackCount && m_vPeers.size() != 0) { // bad stuff when i didnt have acks for all the receipts in recv (no new states?)
 			SetConsoleColor(0);
-			debug("[SEND] SYKAAA PIZDA NAHUY NET MOIH ACK CHUJIH STATE (NE SOBRAL V ReceiveGameState) curTime %d Z%d\n", nCurFrame, m_nID);
+			INTEREST_ZONE_LOG(1, "[SEND] SYKAAA PIZDA NAHUY NET MOIH ACK CHUJIH STATE (NE SOBRAL V ReceiveGameState) curTime %d Z%d\n", nCurFrame, m_nID);
 			SetConsoleColor(6);
 		}
 #endif
 		for (const auto& ack : m_vAck) {
 			stream.WriteU8(ack.nPeerID);
 			stream.WriteU16(ack.nFrame);
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+			streamCustom.WriteU8(ack.nPeerID);
+			streamCustom.WriteU16(ack.nFrame);
+#endif
 #ifdef FIX_BUGS
 			INTEREST_ZONE_LOG(1, " I am send Ack peer %i frame %i\n", ack.nPeerID, ack.nFrame);
 #else
@@ -290,51 +329,158 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 		while (elemIt != m_vElements.end())
 		{
 			sElement* pElem = *elemIt;
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+			pElem->bCurrSend = true;
+#endif
 			pElem->DisposeAttached(lastBasis);
 			if (m_vPeers.empty() || pElem->m_bWasTransfered) {
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+				pElem->bCurrSend = false;
+#endif
 				++elemIt;
 				continue;
 			}
 
 			uint32 startSize = stream.pckt_size;
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+			uint32 startSizeCustom = streamCustom.pckt_size;
+			bool wroteCustom = false;
+#endif
 			bool wrote = false;
 			uint16 elemTime = pElem->m_nLastSentFrame;
 			bool isPickup = (pElem->GetType() == eElementType::ELEMENT_TYPE_PICKUP);
-			uint32 sendInterval = isPickup ? MP_PICKUP_SEND_TIME + ((pElem->GetID() & MP_PICKUP_SEND_MASK) << 6) : MP_PICKUP_SEND_TIME;
+#ifdef GTA_LIBERTY
+			uint32 sendInterval = isPickup ? MP_FULL_SYNC_SEND_INTERVAL + ((pElem->GetID() & MP_PICKUP_SEND_MASK) << 6) : MP_FULL_SYNC_SEND_INTERVAL;
+#else
+			uint32 sendInterval = isPickup ? MP_FULL_SYNC_SEND_INTERVAL + ((pElem->GetID() & MP_PICKUP_SEND_MASK) << 6) : (MP_FULL_SYNC_SEND_INTERVAL * 2);
+#endif
+
+//#ifdef DEBUG_MULTIGAME
+//			debug(" dump elem time %s m_nBasis %d m_nTime %d, m_nDeltaTime %d, m_nLastSentFrame %d, m_vSync.front() %d, m_vSync.size() %d\n",
+//				GetElementStringType(pElem), m_nBasis, pElem->m_nTime, pElem->m_nDeltaTime, pElem->m_nLastSentFrame, pElem->m_vSync.front().m_nTime, pElem->m_vSync.size());
+//#endif
 
 			//if (m_nBasis < nCurFrame && m_nBasis >= syncTime && (nCurFrame - elemTime) < sendInterval)
-			if (static_cast<int16>(m_nBasis - nCurFrame) < 0 && // m_nBasis < nCurFrame
+			if (static_cast<int16>(m_nBasis - nCurFrame) < 0 && // m_nBasis < nCurFrame // has basis for new sync?
 				static_cast<int16>(m_nBasis - pElem->m_vSync.front().m_nTime) >= 0 && //  m_nBasis >= syncTime
-				static_cast<int16>(nCurFrame - elemTime) < static_cast<int16>(sendInterval))
+				static_cast<int16>(nCurFrame - elemTime) < static_cast<int16>(sendInterval)) // full sync delay
 			{
 				// Delta update
 				INTEREST_ZONE_LOG(1, " delta sent for entity %i type %i\n", pElem->GetID(), pElem->GetType()); // custom
 				uint16 elemId = pElem->GetID() & MP_ENTITY_CREATE_MASK;
-				stream.WriteU16(elemId);
+
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+				pElem->bCurrDestPeerVanilaDevice = true; // skip custom delta
+				if(pElem->bVanilaCompatible)
+#endif
+				{ // default stream
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+					assert(pElem->bSendedCreation && "1st delta without MP_ENTITY_CREATE_FLAG"); // i need send create flag my peer group
+#endif
+					assert(pElem->m_nLastSentFrame != 0); // wtf 1st elem send is delta?
+					stream.WriteU16(elemId);
+					pElem->m_nPrevOwnerID = -1;
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+					uint32 beforeSync = stream.pckt_size;
+#endif
+					wrote = pElem->WriteSyncToStream(&stream, nCurFrame, m_nBasis);
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+					//SetConsoleColor(2);
+					//debug("!!!! DELTA SYNC FOR %s %d bytes\n", GetElementStringType(pElem), stream.pckt_size - beforeSync);
+					//SetConsoleColor(6);
+#endif
+					if (wrote) pElem->m_nLastSentFrame = nCurFrame;
+				}
+
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+				pElem->bCurrDestPeerVanilaDevice = false; // allow custom delta
+				streamCustom.WriteU16(elemId);
 				pElem->m_nPrevOwnerID = -1;
-				wrote = pElem->WriteSyncToStream(&stream, nCurFrame, m_nBasis);
-				if (wrote) pElem->m_nLastSentFrame = nCurFrame;
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+				uint32 beforeSyncCustom = streamCustom.pckt_size;
+#endif
+				wroteCustom = pElem->WriteSyncToStream(&streamCustom, nCurFrame, m_nBasis);
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+				//SetConsoleColor(2);
+				//debug("!!!! DELTA SYNC FOR %s %d bytes\n", GetElementStringType(pElem), streamCustom.pckt_size - beforeSyncCustom);
+				//SetConsoleColor(6);
+				assert(pElem->bSendedCreation);
+#endif
+				if (wroteCustom) pElem->m_nLastSentFrame = nCurFrame;
+#endif
 			}
 			else
 			{
 				// Full create/transfer
 				INTEREST_ZONE_LOG(1, " Full state sent for entity %i type %i\n", pElem->GetID(), pElem->GetType());
 				uint16 elemId = pElem->GetID() | MP_ENTITY_CREATE_FLAG;
-				stream.WriteU16(elemId);
+
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+				pElem->bCurrDestPeerVanilaDevice = true; // skip custom delta
+				if (pElem->bVanilaCompatible)
+#endif
+				{ // default
+					stream.WriteU16(elemId);
+					uint8 elemType = static_cast<uint8>(pElem->GetType());
+					if (pElem->m_nPrevOwnerID != -1)
+						elemType |= MP_ENTITY_TRANSFER_FLAG;
+					stream.WriteU8(elemType);
+					if (elemType & MP_ENTITY_TRANSFER_FLAG) {
+						stream.WriteI8(pElem->m_nPrevOwnerID);
+						stream.WriteI16(pElem->m_nPrevID);
+					}
+					////int16 syncTime = static_cast<int16>(pElem->m_vSync.front().m_nTime - 1); // Warn! 0 - 1 -> u16 max
+					////assert(syncTime < pElem->m_vSync.front().m_nTime);
+					////wrote = pElem->WriteSyncToStream(&stream, nCurFrame, static_cast<uint16>(syncTime));
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+					uint32 beforeSync = stream.pckt_size;
+#endif
+					uint16 syncTime = pElem->m_vSync.front().m_nTime - 1; // Warn! 0 - 1 -> u16 max
+					wrote = pElem->WriteSyncToStream(&stream, nCurFrame, syncTime);
+					pElem->m_nLastSentFrame = nCurFrame;
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+					//SetConsoleColor(2);
+					//debug("!!!! FULL SYNC FOR %s %d bytes\n", GetElementStringType(pElem), stream.pckt_size - beforeSync);
+					if (!pElem->bSendedCreation) {
+						//SetConsoleColor(3);
+						//debug("!!!! ITS 1ST SYNC (PEER CREATION) FOR %s %d bytes\n", GetElementStringType(pElem), stream.pckt_size - beforeSync);
+						pElem->bSendedCreation = true;
+					}
+					//SetConsoleColor(6);
+#endif
+				}
+
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+				pElem->bCurrDestPeerVanilaDevice = false; // allow custom delta
+				streamCustom.WriteU16(elemId);
 				uint8 elemType = static_cast<uint8>(pElem->GetType());
 				if (pElem->m_nPrevOwnerID != -1)
 					elemType |= MP_ENTITY_TRANSFER_FLAG;
-				stream.WriteU8(elemType);
+				streamCustom.WriteU8(elemType);
 				if (elemType & MP_ENTITY_TRANSFER_FLAG) {
-					stream.WriteI8(pElem->m_nPrevOwnerID);
-					stream.WriteI16(pElem->m_nPrevID);
+					streamCustom.WriteI8(pElem->m_nPrevOwnerID);
+					streamCustom.WriteI16(pElem->m_nPrevID);
 				}
 				////int16 syncTime = static_cast<int16>(pElem->m_vSync.front().m_nTime - 1); // Warn! 0 - 1 -> u16 max
 				////assert(syncTime < pElem->m_vSync.front().m_nTime);
-				////wrote = pElem->WriteSyncToStream(&stream, nCurFrame, static_cast<uint16>(syncTime));
+				////wroteCustom = pElem->WriteSyncToStream(&stream, nCurFrame, static_cast<uint16>(syncTime));
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+				uint32 beforeSyncCustom = streamCustom.pckt_size;
+#endif
 				uint16 syncTime = pElem->m_vSync.front().m_nTime - 1; // Warn! 0 - 1 -> u16 max
-				wrote = pElem->WriteSyncToStream(&stream, nCurFrame, syncTime);
+				wroteCustom = pElem->WriteSyncToStream(&streamCustom, nCurFrame, syncTime);
 				pElem->m_nLastSentFrame = nCurFrame;
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+				//SetConsoleColor(2);
+				//debug("!!!! FULL SYNC FOR %s %d bytes\n", GetElementStringType(pElem), stream.pckt_size - beforeSync);
+				if (!pElem->bSendedCreation) {
+					//SetConsoleColor(3);
+					//debug("!!!! ITS 1ST SYNC (PEER CREATION) FOR %s %d bytes\n", GetElementStringType(pElem), streamCustom.pckt_size - beforeSyncCustom);
+					pElem->bSendedCreation = true;
+				}
+				//SetConsoleColor(6);
+#endif
+#endif
 			}
 
 			const char* aEntityNames[] = {
@@ -353,7 +499,7 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 				"quad",
 				"nm2d",
 #endif
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 				"obj ",
 #endif
 			};
@@ -382,6 +528,13 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 				packet.pckt_size = startSize; // reset entity id and other header when delta is 0x0
 			}
 
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+			if(!wroteCustom) {
+				pElem->DisposeFrame(nCurFrame);
+				packetCustom.pckt_size = startSizeCustom; // reset entity id and other header when delta is 0x0
+			}
+#endif
+
 			// send split msg without finale flag 0x80 MP_ZONE_SEQ_FLAG
 			// pos_ack_count - payload start, startSize - prev valid end sync for entity (< LIM)
 			// смотри прикол split разбивает не по 1024 это тригер на разбиение, а по ласт размеру sync, тоесть отправит например 2 entity из 4х
@@ -398,7 +551,11 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 				INTEREST_ZONE_LOG(1, " == message split point %i ==", packet.sequence + 1);
 #endif
 				//DUMP_PACKET(packet, "SENDSPLIT", 1); // -----------------------------
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+				Game.SendMessage(packet, BROADCAST_VANILLA_DEVICE_GROUPID);
+#else
 				Game.SendMessage(packet, BROADCAST_PEER_GROUPID);
+#endif
 				packet.pckt_size = pos_ack_count + (nCurSz - startSize);
 				// [ACK] EH1[SYN1] EH2[SYN2] .. --->> [ACK] EH2[SYN2] ...
 				// [HDR] [BASIS] [ACKCNT] [ACK1] [ACK2] ...[ACKN][PAYLOAD:EH1[SYN1] EH2[SYN2] EH3[SYN3] ...]
@@ -408,9 +565,44 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 				memmove(((uint8*)&packet) + pos_ack_count, ((uint8*)&packet) + startSize, nCurSz - startSize); // rewrite ack data + entity id type sync
 				++packet.sequence;
 			}
+
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+			// send split msg without finale flag 0x80 MP_ZONE_SEQ_FLAG
+			// pos_ack_count - payload start, startSize - prev valid end sync for entity (< LIM)
+			// смотри прикол split разбивает не по 1024 это тригер на разбиение, а по ласт размеру sync, тоесть отправит например 2 entity из 4х
+			// и в recv здать целостность не нужно
+			assert(packetCustom.pckt_size < SYNC_WRITER_BUFFER_SIZE);
+			if (packetCustom.pckt_size > MP_PACKET_SPLIT_SIZE) // split per sync (entity)
+			{
+				uint32 nCurSzCustom = packetCustom.pckt_size;
+				packetCustom.pckt_size = startSizeCustom;
+				m_nCurTimeCustom += startSizeCustom; // kek
+#ifdef FIX_BUGS
+				INTEREST_ZONE_LOG(1, " == message split point %i ==\n", packetCustom.sequence + 1);
+#else
+				INTEREST_ZONE_LOG(1, " == message split point %i ==", packetCustom.sequence + 1);
+#endif
+				//DUMP_PACKET(packet, "SENDSPLIT", 1); // -----------------------------
+				Game.SendMessage(packetCustom, BROADCAST_CUSTOM_DEVICE_GROUPID);
+				packetCustom.pckt_size = pos_ack_count_custom + (nCurSzCustom - startSizeCustom);
+				// [ACK] EH1[SYN1] EH2[SYN2] .. --->> [ACK] EH2[SYN2] ...
+				// [HDR] [BASIS] [ACKCNT] [ACK1] [ACK2] ...[ACKN][PAYLOAD:EH1[SYN1] EH2[SYN2] EH3[SYN3] ...]
+				//	^				 ^								 ^
+				//	|                |                               |
+				//	buf start     pos_ack_count                  buf end(nCurSz)
+				memmove(((uint8*)&packetCustom) + pos_ack_count_custom, ((uint8*)&packetCustom) + startSizeCustom, nCurSzCustom - startSizeCustom); // rewrite ack data + entity id type sync
+				++packetCustom.sequence;
+			}
+#endif
+
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+			pElem->bCurrSend = false;
+#endif
+
 			++elemIt;
 		}
 
+#if 0 // old
 		// Process remove entries
         auto removeIt = m_vEntities.begin();
         while (removeIt != m_vEntities.end()) {
@@ -427,6 +619,10 @@ void cInterestZone::SendGameState(bool bIsInRange) {
             uint16 writeId = (entityId & MP_ENTITY_CREATE_MASK) | MP_ENTITY_CREATE_FLAG; // ?
             stream.WriteU16(writeId);
             stream.WriteU8(MP_ENTITY_DESTROY_TYPE);
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+			streamCustom.WriteU16(writeId);
+			streamCustom.WriteU8(MP_ENTITY_DESTROY_TYPE);
+#endif
 			bool canRemove = (entityId & MP_ENTITY_FINAL_FLAG) != 0;
 			if (!canRemove) {
 				removeIt->nBasis = nCurFrame;
@@ -440,24 +636,82 @@ void cInterestZone::SendGameState(bool bIsInRange) {
 				++removeIt;
 			}
         }
+#else
+		// Process remove entries
+		if (!m_vPeers.empty())
+		{
+			auto removeIt = m_vEntities.begin();
+			while (removeIt != m_vEntities.end())
+			{
+				uint32 entityId = removeIt->nEntityID;
+				uint16 entryBasis = removeIt->nBasis;
+				bool alreadyFinal = (entityId & MP_ENTITY_FINAL_FLAG) != 0;
+
+#ifdef FIX_BUGS
+				INTEREST_ZONE_LOG(1, " Deleted entity %i %s\n", (entityId & MP_ENTITY_CREATE_MASK), alreadyFinal ? "FINAL" : "");
+				//debug(" Deleted entity %i %s\n", entityId, isFinal ? "FINAL" : "");
+#else
+				INTEREST_ZONE_LOG(1, " Deleted entity %i %s", (entityId & MP_ENTITY_CREATE_MASK), alreadyFinal ? "FINAL" : "");
+#endif
+
+				uint16 writeId = (entityId & MP_ENTITY_CREATE_MASK) | MP_ENTITY_CREATE_FLAG;
+				stream.WriteU16(writeId);
+				stream.WriteU8(MP_ENTITY_DESTROY_TYPE);
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+				streamCustom.WriteU16(writeId);
+				streamCustom.WriteU8(MP_ENTITY_DESTROY_TYPE);
+#endif
+
+				if (!alreadyFinal)
+				{
+					removeIt->nBasis = nCurFrame;
+					removeIt->nEntityID |= MP_ENTITY_FINAL_FLAG;
+					++removeIt;
+				}
+				else
+				{
+					bool eraseCond = (static_cast<int16>(m_nBasis - nCurFrame) < 0) && // m_nBasis < nCurFrame
+						(static_cast<int16>(entryBasis - m_nBasis) < 0); // entryBasis < m_nBasis
+
+					if (eraseCond || (m_nID == Game.LocalPlayerID()))
+						removeIt = m_vEntities.erase(removeIt);
+					else
+						++removeIt;
+				}
+			}
+		}
+		else {
+			m_vEntities.clear();
+		}
+#endif
 
 		// Final send!!
 
         m_nCurTime += stream.pckt_size; // kek 2
 		packet.sequence |= MP_ZONE_SEQ_FLAG; // final packet flags &0x7F- seq index, &0x80 finale flag
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+		m_nCurTimeCustom += streamCustom.pckt_size; // kek 2
+		packetCustom.sequence |= MP_ZONE_SEQ_FLAG; // final packet flags &0x7F- seq index, &0x80 finale flag
+#endif
 
 		//DUMP_PACKET(packet, "FINALESEND", 1); // -----------------------------
+#ifdef MULTIGAME_ELEMENTS_COMPAT_IMPROVEMENTS
+		Game.SendMessage(packet, BROADCAST_VANILLA_DEVICE_GROUPID);
+		Game.SendMessage(packetCustom, BROADCAST_CUSTOM_DEVICE_GROUPID);
+#else
 #ifdef FIX_BUGS
         if (m_vPeers.size() == 1) {
 #else
         if (m_vPeers.size() < 2) {
 #endif
-            Game.SendMessage(packet, m_vPeers[0].nPeerID);
+            Game.SendMessage(packet, m_vPeers[0].nPeerID); // why kek
         } else {
             Game.SendMessage(packet, BROADCAST_PEER_GROUPID);
         }
-    } // DT < 0
-	else if (!bIsInRange && m_vElements.empty() && m_vEntities.empty()) {
+#endif
+    }
+
+	if (!bIsInRange && m_vElements.empty() && m_vEntities.empty()) {
         delete this;
     }
 }
@@ -492,6 +746,7 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 	uint16 basis = syncStream->ReadU16();
 #ifdef FIX_BUGS
 	SetConsoleColor(3); // custom
+	//printf("P%i ZONE %i state %i (basis %i)\n", nPeerID, m_nID, nState, basis);
 	INTEREST_ZONE_LOG(1, "P%i ZONE %i state %i (basis %i)\n", nPeerID, m_nID, nState, basis);
 	SetConsoleColor(6); // custom
 #else
@@ -548,6 +803,9 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 		if (seqIndex == 0) // 1st split/full packet
 		{
 			uint8 ackCount = syncStream->ReadU8();
+			SetConsoleColor(3);
+			//printf("GOT ACK ZID: %d ACK %d\n", m_nID, ackCount);
+			SetConsoleColor(6);
 			for (uint8 ackIdx = 0; ackIdx < ackCount; ++ackIdx) {
 				uint8 ackPeer = syncStream->ReadU8();
 				uint16 ackFrame = syncStream->ReadU16();
@@ -615,7 +873,11 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 
 			if (type == MP_ENTITY_DESTROY_TYPE)
 			{
+#ifdef FIX_BUGS
+				debug(" Destroy %i\n", entityId);
+#else
 				debug(" Destroy %i", entityId);
+#endif
 				gb_mp_will_destroy_elem = true;
 				sElement* pElem = Game.GetEntityForHandle(nPeerID, entityId);
 				if (pElem) delete pElem;
@@ -667,7 +929,6 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 						//debug(" Create Car peer=%d ent=%d", nPeerID, entityId); // added \n
 						debug(" Create Car peer=%d ent=%d\n", nPeerID, entityId);
 						pNewElem = new sAutomobile();
-						assert(false && "unimplemented sync reader");
 						break;
 					}
 					case eElementType::ELEMENT_TYPE_BIKE:
@@ -675,7 +936,6 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 						//debug(" Create Bike peer=%d ent=%d", nPeerID, entityId); // added \n
 						debug(" Create Bike peer=%d ent=%d\n", nPeerID, entityId);
 						pNewElem = new sBike();
-						assert(false && "unimplemented sync reader");
 						break;
 					}
 #ifndef GTA_LIBERTY
@@ -684,7 +944,6 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 						//debug(" Create Heli peer=%d ent=%d", nPeerID, entityId); // added \n
 						debug(" Create Heli peer=%d ent=%d\n", nPeerID, entityId);
 						pNewElem = new sHeli();
-						assert(false && "unimplemented sync reader");
 						break;
 					}
 #endif
@@ -700,7 +959,6 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 						//debug(" Create Text Sprite peer=%d ent=%d", nPeerID, entityId); // added \n
 						debug(" Create Text Sprite peer=%d ent=%d\n", nPeerID, entityId);
 						pNewElem = new sTextSprite();
-						assert(false && "unimplemented sync reader");
 						break;
 					}
 					case eElementType::ELEMENT_TYPE_PICKUP:
@@ -716,7 +974,6 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 						//debug(" Create Boat peer=%d ent=%d", nPeerID, entityId); // added \n
 						debug(" Create Boat peer=%d ent=%d\n", nPeerID, entityId);
 						pNewElem = new sBoat();
-						assert(false && "unimplemented sync reader");
 						break;
 					}
 					case eElementType::ELEMENT_TYPE_PLANE:
@@ -724,7 +981,6 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 						//debug(" Create Plane peer=%d ent=%d", nPeerID, entityId); // added \n
 						debug(" Create Plane peer=%d ent=%d\n", nPeerID, entityId);
 						pNewElem = new sPlane();
-						assert(false && "unimplemented sync reader");
 						break;
 					}
 					case eElementType::ELEMENT_TYPE_BMX:
@@ -732,7 +988,6 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 						//debug(" Create Bmx peer=%d ent=%d", nPeerID, entityId); // added \n
 						debug(" Create Bmx peer=%d ent=%d\n", nPeerID, entityId);
 						pNewElem = new sBmx();
-						assert(false && "unimplemented sync reader");
 						break;
 					}
 					case eElementType::ELEMENT_TYPE_QUADBIKE:
@@ -740,7 +995,6 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 						//debug(" Create QuadBike peer=%d ent=%d", nPeerID, entityId); // added \n
 						debug(" Create QuadBike peer=%d ent=%d\n", nPeerID, entityId);
 						pNewElem = new sQuadBike();
-						assert(false && "unimplemented sync reader");
 						break;
 					}
 					case eElementType::ELEMENT_TYPE_NETMETER2D:
@@ -748,11 +1002,10 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 						//debug(" Create NetMeter2d peer=%d ent=%d", nPeerID, entityId); // added \n
 						debug(" Create NetMeter2d peer=%d ent=%d\n", nPeerID, entityId);
 						pNewElem = new sNetMeter2d();
-						assert(false && "unimplemented sync reader");
 						break;
 					}
 #endif
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 					case eElementType::ELEMENT_TYPE_OBJECT:
 					{
 						//debug(" Create Object peer=%d ent=%d", nPeerID, entityId); // added \n
@@ -771,6 +1024,10 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 				}
 				SetConsoleColor(6); // custom
 
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+				pNewElem->bCurrRecv = true;
+#endif
+
 				pNewElem->RegisterSelfWithOwner(nPeerID, entityId);
 #ifndef GTA_LIBERTY
 				sElementPhysical* pElemPhys = pNewElem->HasCapability(sElementPhysical::Capability()) ? (sElementPhysical*)pNewElem : nil;
@@ -780,10 +1037,10 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 					packet.pckt_size = sizeof(net::pckt_ack_entity_create);
 					packet.pckt_id = gtMP_PacketIDs.ack_entity_create.pckt_id;
 					packet.entityId = entityId;
-					Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID);
+					Game.SendMessagePriority(packet, nPeerID);
 				}
 #endif
-				mp_lsc_transfer_entity(owner, transferId, pNewElem->GetOwner(), pNewElem->GetID());
+				lsc_transfer_tracked_entity(owner, transferId, pNewElem->GetOwner(), pNewElem->GetID());
 				pNewElem->m_pZone = this;
 				uint8* pBufferBeforeParse = syncStream->Tellg();
 				sElementSync* pSync = pNewElem->GetSyncWithTime2(nState, nState).element;
@@ -807,7 +1064,7 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 					"quad",
 					"nm2d",
 #endif
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 					"obj ",
 #endif
 				};
@@ -834,14 +1091,19 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 					|| elemType == eElementType::ELEMENT_TYPE_BMX
 					|| elemType == eElementType::ELEMENT_TYPE_QUADBIKE
 #endif
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 					|| elemType == eElementType::ELEMENT_TYPE_OBJECT
 #endif
 					)
 				{
-					if (((sElementPhysical*)pNewElem)->GetPhysical()->bHasBlip)
+					if (((sElementPhysical*)pNewElem)->GetPhysical()->bHasBlipPhys)
 						TheRadar->AddMultiplayerMarker(pNewElem->GetOwner(), pNewElem->GetID());
 				}
+
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+				pNewElem->bCurrRecv = false;
+#endif
+
 				continue; // sync was read already for new element // <<----------------- !!
 			} // end nil entity
 		} // end create flag
@@ -854,13 +1116,16 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 		uint8* pBufferBeforeParse = syncStream->Tellg();
 		sElement* pElem = Game.GetEntityForHandle(nPeerID, entityId);
 		if (!pElem) {
-			assert(false && "wait, we non create flag element id (already created), but pElem is nil");
+			assert(false && "wait, we non create flag element id (already created), but pElem GetEntityForHandle is nil");
 			debug("***MULTIPLAYER COCKUP*** TRYING TO ACCESS ENTITY %d %d\n", nPeerID, entityId);
 			debug("multiplayer cockup !!! TRYING TO ACCESS ENTITY %d %d\n", nPeerID, entityId);
 			Adhoc.SetHasError();
 			LOG_ON_END();
 			return;
 		}
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+		pElem->bCurrRecv = true;
+#endif
 		sElementSync* pSync = pElem->GetSyncWithTime2(nState, basis).element;
 		pElem->ReadSyncFromStream(syncStream, pSync); // << ------------------  read sync for exists element [elem delta/full sync]
 
@@ -880,7 +1145,7 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 			"quad",
 			"nm2d",
 #endif
-#ifdef MULTIGAME_IMPROVEMENTS
+#ifdef MULTIGAME_ELEMENTS_IMPROVEMENTS
 			"obj ",
 #endif
 		};
@@ -894,7 +1159,11 @@ void cInterestZone::ReceiveGameState(uint32 nPeerID, uint16 nState, sReadSyncStr
 			syncStream->Tellg() - pBufferBeforeParse);
 #endif
 		pElem->ApplyClientSync(Game.m_pNetSession->m_nCurTime);
-		debug("DT %d, SYN %d\n", syncStream->Tellg() - pBufferBeforeParse, GetSyncSizeByElement(pElem));
+		INTEREST_ZONE_LOG(1, "DT %d, SYN %d\n", syncStream->Tellg() - pBufferBeforeParse, GetSyncSizeByElement(pElem));
+
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+		pElem->bCurrRecv = false;
+#endif
 
 	} // end sync stream loop
 

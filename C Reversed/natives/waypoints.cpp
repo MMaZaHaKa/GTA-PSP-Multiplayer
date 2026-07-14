@@ -32,10 +32,7 @@ int mp_lsn_RemoveWaypoint(lua_State* L) {
 int mp_lsn_HasWaypointBeenHit(lua_State* L) {
 	cMultiGame& Game = cMultiGame::Instance();
 	int32* pHandle = ls_get_waypoint(L, 1);
-	if (!pHandle || *pHandle == -1) {
-		lua_pushboolean(L, false);
-		return 1;
-	}
+	if (!pHandle || *pHandle == -1) return 0;
 	auto it = Game.m_WaypointManager.m_RbWaypointTree.find(*pHandle);
 	lua_pushboolean(L, ((it != Game.m_WaypointManager.m_RbWaypointTree.end()) && it->second.second));
 	return 1;
@@ -50,7 +47,7 @@ static const luaL_reg ls_waypoint_lib[] = {
 VALIDATE_LUA_LIB(ls_waypoint_lib, (3 + 1), (3 + 1));
 
 int mp_lsn_SetWaypoint(lua_State* L) {
-	cMultiGame& pGame = cMultiGame::Instance();
+	cMultiGame& Game = cMultiGame::Instance();
 	int32 nPlayerID = lsc_getPlayer(L, 1);
 	CVector pos, direction, hitSize(7.0f, 7.0f, 7.0f);
 	lsc_getVectorFromStack(pos, L, 2, true);
@@ -71,23 +68,23 @@ int mp_lsn_SetWaypoint(lua_State* L) {
 	bool bShowArrow = (nTop >= 11) ? lua_toboolean(L, 11) : true;
 #ifndef GTA_LIBERTY
 	int32 nType = (nTop >= 12) ? lua_tonumber(L, 12) : 0;
-	uint16 nID = pGame.m_WaypointManager.AddEntry(nPlayerID, pos, direction, hitSize, sColor, bShowArrow, nType, fMarkerSize, fArrowHeight);
+	uint16 nID = Game.m_WaypointManager.AddEntry(nPlayerID, pos, direction, hitSize, sColor, bShowArrow, nType, fMarkerSize, fArrowHeight);
 #else
-	uint16 nID = pGame.m_WaypointManager.AddEntry(nPlayerID, pos, direction, hitSize, sColor, bShowArrow, fMarkerSize, fArrowHeight);
+	uint16 nID = Game.m_WaypointManager.AddEntry(nPlayerID, pos, direction, hitSize, sColor, bShowArrow, fMarkerSize, fArrowHeight);
 #endif
 	register_waypoint_element(L, nID);
-	return 0;
+	return 1;
 }
 
 int mp_lsn_RaceArrowVisible(lua_State* L) {
-	cMultiGame& pGame = cMultiGame::Instance();
+	cMultiGame& Game = cMultiGame::Instance();
 	bool bRaceArrowVisible = lua_toboolean(L, 1);
-	pGame.m_WaypointManager.SetRaceArrowVisible(bRaceArrowVisible);
+	Game.m_WaypointManager.SetRaceArrowVisible(bRaceArrowVisible);
 	return 0;
 }
 
 #ifndef GTA_LIBERTY
-int mp_lsn_SetPointerArrow(lua_State* L) { // Vip Rip https://prnt.sc/izYa4GgLLoH6
+int mp_lsn_SetPointerArrow(lua_State* L) { // Vip Rip
 	CVector pos;
 	lsc_getVectorFromStack(pos, L, 1, true);
 	cNavArrow::SetTarget(true, pos.x, pos.y, pos.z);

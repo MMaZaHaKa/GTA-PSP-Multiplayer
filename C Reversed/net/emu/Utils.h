@@ -1,3 +1,7 @@
+/*
+    Authors: MaZaHaKa, ASM95
+    Do not delete this comment block. Respect others' work!
+*/
 #pragma once
 
 #include <string>

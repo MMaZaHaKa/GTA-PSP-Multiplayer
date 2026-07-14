@@ -21,55 +21,6 @@
 #include "multiplayer/elements/sPed.h"
 #include "multiplayer/net/Peers.h"
 
-
-/*
-TODO
-#1: implement function (it is just a stub)
-#2: function partially implemented (have to re-check it)
- + missing some instructions and/or function calls
-#3: code adapted from PSP
- + PSP controls/framework usually are not available in PC
-*/
-
-// TODO: SP Dummy
-// cAudioManager::ProcessMultiplayerVehicle
-// cAudioManager::ProcessMultiplayerPed
-// CProjectileInfo::RemoveAllProjectilesOwnedBy
-// CWeaponEffects::GetTargetEntity
-// CWorld::FindMultiplayerObjectsInRangeSectorList
-// CPed::SetPlayerToFollow
-// CPlayerPed::HasUberPickup
-// CPlayerPed::HasQuadDamage
-// CPlayerPed::HasInvisibility
-// CPlayerPed::HasRegeneration
-// CPlayerPed::HasFlagBall +++
-// CPlayerPed::GiveQuadDamage
-// CPlayerPed::GiveRegeneration
-// CPlayerPed::GiveInvisibility
-// CPlayerPed::GiveCarHandling
-// CPlayerPed::GiveFlagBall ++++
-// CPlayerPed::DropFlagBall ++++
-// CPlayerPed::RemoveUberPickup
-// CPlayerPed::DropUberPickup
-// CPlayerPed::GetPickupsBeingCarried
-// CRadar::AddMultiplayerMarker
-// CRadar::RemoveMultiplayerMarker
-// CPickup::PickupTheDamnPickup
-// CPickups::DestroyFlagBall
-// CPed::HasUberPickup
-// CPed::GiveQuadDamage
-// CPed::GiveRegeneration
-// CPed::GiveInvisibility
-// CPed::StartMultiplayerFrenzy
-// CDarkel::StartMultiplayerFrenzy
-// CPickup::PickupTheDamnPickup
-// CPad::GetExitVehicleForScript
-// CGameLogic::RestorePlayerStuffDuringResurrection_NetworkGame
-// CMBlur::Reset ? need?
-// CMessages::ClearHelpMessages
-// CCranes, CFakePlane, CFerry, etc -  SetupForSP/MP
-
-
 enum class eGameType {
 	DEATHMATCH = 0, // Liberty/Vice City Survivor
 	MULTIRACE,      // (TURISMO) Street Rage
@@ -214,13 +165,14 @@ private:
 	int32 m_nSize;
 	int32 m_nIndex;
 public:
-	void push(int32 id);
-	int32 pop();
-	bool isEmpty() const { return m_nIndex == 0; }
-	void Reset() { m_nIndex = 0; }
-	void clear();
 	cEventStack();
 	~cEventStack();
+
+	void push(int32 id);
+	int32 pop();
+	bool isEmpty();
+	void reset();
+	void clear();
 };
 
 class cMultiGame
@@ -307,7 +259,7 @@ public:
 	int32 m_nWaitUnk;
 	int32 m_nWaitHeartBeat;
 	cNetSession* m_pNetSession;
-	std::vector<std::pair<CEntity*, sElement*>> m_vEntList; // TODO(MP)?: this is not a vector?
+	std::map<CEntity*, sElement*> m_EntMap;
 	cInterestZoneManager m_ZoneManager;
 	//int8 m_pad5[3];
 	bool m_bTeamEveryoneIn;
@@ -316,7 +268,10 @@ public:
 	uint32 m_nCurTime;
 	bool m_bHasSuspended;
 	bool m_bIsNeedPrepareModels;
-#ifndef GTA_LIBERTY // tmp
+#ifdef GTA_LIBERTY
+	std::vector<sPeerState*> m_vPlayers; // simplify
+#endif
+#ifndef GTA_LIBERTY
 	bool m_bIsServerReadyToGo;
 	//int8 m_pad8[1];
 	CVector m_nFlagBallPosition;
@@ -355,15 +310,11 @@ public:
 	int8 m_nVipPeerID; // id u16
 #endif
 
-//#ifndef GTA_LIBERTY // tmp
-//	//std::vector<sPeerState> m_vPlayers; // lcs real type
-//	std::vector<sPeerState*> m_vPlayers; // simplify
-//#endif
-//	tMacAddr m_playerMacAddr;
 
+public:
 	cMultiGame();
 	~cMultiGame();
-public:
+
 	void UpdateReceive();
 	void UpdateSend();
 	void SetSuspend();
@@ -413,17 +364,19 @@ public:
 	CRGBA* GetPlayerColor(int32 id);
 	void SyncPlayerDead(CEntity* ent);
 	void SyncPlayerDead(uint8 id);
-	void SendMessage(const net::pckt_base& packet, int destID);
-	void SendMessagePriority(const net::pckt_base& packet, int destID);
+	void SendMessage(const net::pckt_base& packet, int destID);         // don't use it for destID LocalPlayerID
+	void SendMessagePriority(const net::pckt_base& packet, int destID); // don't use it for destID LocalPlayerID
 	sElement* GetEntityForHandle(int32 nPeerID, int16 id); // nPeerID 0 (local): id 0 (sPlayer), id 1 (sPed)
 	sElement* FindElement(int16 nPeerID, int32 nOwner, int16 nElemID);
-	sVehicle* FindVehicle(int16 nPeerA, int16 nPeerB);
+	sVehicle* FindVehicle(int16 nPeer, int16 nDriverID);
 	template<typename T = struct sElement*>
 	T GetElementFromEntity(CEntity* entity) {
-		for (std::vector<std::pair<CEntity*, sElement*>>::iterator it = m_vEntList.begin(); it != m_vEntList.end(); it++) {
-			if (it->first == entity) return (T)it->second;
-		}
-		return nil;
+#ifdef FIX_BUGS
+		if (entity == nil) return nil;
+#endif
+
+		auto it = m_EntMap.find(entity);
+		return (it != m_EntMap.end()) ? static_cast<T>(it->second) : nil;
 	}
 #ifdef GTA_LIBERTY
 	void SendTransferEntity(sElement* elem);
@@ -500,7 +453,11 @@ public:
 	void LoadMultiraceGameTypeCtf1Models(); // rename?
 	void LoadCtfGameTypeModels(); // inlined
 #endif
-
+#ifdef GTA_LIBERTY
+	bool IsLocalElement(sElement* pElement);
+#else
+	bool IsElementExistsForPeer(uint8 nPeerID, sElement* pElement);
+#endif
 
 	// inlined
 #ifndef GTA_LIBERTY
@@ -518,7 +475,7 @@ public:
 
 	inline bool IsOpen() { return m_pNetSession != nil && m_pNetSession->m_netListen.m_nPdpID >= 0; }
 	inline uint16 LocalPlayerID() { return m_pNetSession->m_nSelfPeerID; }
-	inline bool IsElementOwnerLocalPlayer(sElement* elem) { return elem->GetOwner() == LocalPlayerID(); };
+	inline bool IsElementOwnerLocalPlayer(sElement* elem) { assert(elem); return elem->GetOwner() == LocalPlayerID(); };
 	uint32 inline GetCurTime() { return m_nCurTime; }
 
 #ifdef GTA_LIBERTY
@@ -528,39 +485,53 @@ public:
 #endif
 
 	inline void RemoveEntity(sElement* pElement) {
+		if (pElement == nil)
+			return;
+
 		CEntity* pEntity = pElement->GetEntity();
-		if (pEntity == nil) return;
-		auto it = std::find(m_vEntList.begin(), m_vEntList.end(), std::pair<CEntity*, sElement*>(pEntity, pElement));
-		if (it != m_vEntList.end()) m_vEntList.erase(it);
+		if (pEntity != nil)
+			m_EntMap.erase(pEntity);
+//#ifdef DEBUG_MULTIGAME
+//		else {
+//			debug("!pEntity -> RemoveEntity(0x%p)\n", pElement);
+//		}
+//#endif
 	}
 
 	inline void DisposeEntity(CEntity* pEntity) {
 		if (pEntity == nil) return;
-		auto it = m_vEntList.begin();
-		while (it != m_vEntList.end()) {
-			if (it->first == pEntity) {
-				break;
-			}
-			++it;
-		}
-		if (it != m_vEntList.end()) {
-			sElement* pElement = it->second;
-			AttachEntity(pElement, nil);
-			pElement->SetEntity(nil);
+		sElement* pElement = GetElementFromEntity(pEntity);
+		if (pElement) {
+			AttachEntity(pElement, nil); // nil -> delete in m_vEntList
+			pElement->SetEntity(nil); // prevent delete native Entity in sElement dtor
 			delete pElement;
 		}
+//#ifdef DEBUG_MULTIGAME
+//		else {
+//			debug("!pElement -> DisposeEntity(0x%p)\n", pEntity);
+//		}
+//#endif
 	}
 
-	inline cInterestZone* GetElementOwnerZone(sElement* pElement) { return m_ZoneManager.GetZoneByPeer(pElement->GetOwner()); }
+#ifdef DEBUG_MULTIGAME
+	inline void DumpEntities() {
+		debug("map size = %zu\n", m_EntMap.size());
+		for (const auto& pair : m_EntMap) {
+			debug("    map[0x%p] -> sElement 0x%p\n", pair.first, pair.second);
+		}
+	}
+#endif
 
-	// our native alias
-	inline sPed* FindPlayerPedMG() { return GetPlayerPed(LocalPlayerID()); }
-	inline sPlayer* FindPlayerInfoMG() { return GetPlayer(LocalPlayerID()); }
-	inline cInterestZone* FindPlayerZoneMG() { return m_ZoneManager.GetZoneByPeer(LocalPlayerID()); } // -1?
+	inline cInterestZone* GetElementOwnerZone(sElement* pElement) { return pElement ? m_ZoneManager.GetZoneByPeer(pElement->GetOwner()) : nil; }
+
+	//// our native alias
+	//inline sPed* FindPlayerPedMG() { return GetPlayerPed(LocalPlayerID()); }
+	//inline sPlayer* FindPlayerInfoMG() { return GetPlayer(LocalPlayerID()); }
+	//inline cInterestZone* FindPlayerZoneMG() { return m_ZoneManager.GetZoneByPeer(LocalPlayerID()); } // -1?
 
 	inline void SetTeamGameTime(int32 nTeamID, int32 time) { m_anTeamTimer[nTeamID] = time; }
 
-	static cMultiGame& Instance()
+	inline static cMultiGame& Instance()
 	{
 		return msInstance;
 		//if (!msInstance)
@@ -573,6 +544,18 @@ public:
 
 void* allocFunc(uint32 size);
 void deleteFunc(void* buff);
+
+// our native alias (custom helpers)
+inline sPed* FindPlayerPedMG() { return cMultiGame::Instance().GetPlayerPed(cMultiGame::Instance().LocalPlayerID()); }
+inline sPlayer* FindPlayerInfoMG() { return cMultiGame::Instance().GetPlayer(cMultiGame::Instance().LocalPlayerID()); }
+inline cInterestZone* FindPlayerZoneMG() { return cMultiGame::Instance().m_ZoneManager.GetZoneByPeer(cMultiGame::Instance().LocalPlayerID()); } // -1?
+#ifdef GTA_LIBERTY
+inline sPeerState* FindPlayerPeerMG() { todo from netsession }
+#else
+inline sPeerState* FindPlayerPeerMG() { PeerManager.GetSelfPeer(); }
+#endif
+
+int32 FindPlayerHostID();
 
 #ifndef GTA_PSP
 double mp_time_now_d();
@@ -652,6 +635,36 @@ extern bool gMultiplayerCheat4;
 
 extern bool gbIsUsingLUASource; // non compiled lua (.LUA)
 
+extern CVector gVecForSinglePlayerScript;
+
+#ifdef DEBUG_MULTIGAME_IMPROVEMENTS
+// its for assert element lifetime // recv - CORELOOP(create) - send - render
+// if create element after send, in render, its miss sending creation full delta sync by time m_nLastSentFrame in cInterestZone::SendGameState
+// in new frame (after render creation) start new frame time, and 1st new element sync now its delta (without create bit), -> crash peer
+extern bool gAllowCreateElement;
+#endif
+
+#ifdef DEBUG_MULTIGAME
+// 0.013 - 0.036 // lag 0.327
+#define MG_LAG_START(id) auto _start_time_##id = std::chrono::steady_clock::now()
+#define MG_LAG_END(id, desc, max) do { \
+    auto _end_time = std::chrono::steady_clock::now(); \
+    auto _dt = std::chrono::duration<double>(_end_time - _start_time_##id).count(); \
+    if (_dt > max) { \
+        SetConsoleColor(0); printf("[%s] LAG detected: %.3f seconds\n", desc, _dt); SetConsoleColor(6); \
+    } \
+} while(0)
+#define TIMER_START(id) auto _start_time_##id = std::chrono::steady_clock::now()
+#define TIMER_END(id, desc) do { \
+    auto _end_time = std::chrono::steady_clock::now(); \
+    auto _dt = std::chrono::duration<double>(_end_time - _start_time_##id).count(); \
+    printf("[%s] Time: %.5f seconds\n", desc, _dt); \
+} while(0)
+#else
+#define MG_LAG_START(id)
+#define MG_LAG_END(id, desc, max)
+#endif
+
 #ifdef DEBUG_MULTIGAME
 void DebugMenuExecLuaInput();
 uint8* DebugLoadPSPDump(const char* path, int32* nOutSize);
@@ -667,7 +680,9 @@ extern int32 gMPDebugPrintLevel;
 void MPPrintDebugStuff();
 #endif
 
-uint32 GetSyncSizeByElement(sElement* pElement);
+const char* GetElementStringType(sElement* pElement);
+const char* GetPhysicalMGStringType(cPhysicalMG* pPhysical);
+uint32 GetSyncSizeByElement(sElement* pElement); // sizeof
 
 uint8 GetLevelOfCompleteness();
 bool IsCarAllowedInMultiplayer(int32 min, bool mode);

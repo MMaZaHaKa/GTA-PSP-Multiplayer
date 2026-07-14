@@ -18,12 +18,12 @@
 
 
 sTextSprite* lsc_get_text_sprite(lua_State* L) {
-	cMultiGame& pGame = cMultiGame::Instance();
+	cMultiGame& Game = cMultiGame::Instance();
 	void* pData = luaL_checkudata(L, 1, "textsprite");
 	if (!pData) return nil;
 	int32 nHandle = *((int*)pData);
 	if (nHandle == -1) return nil;
-	return (sTextSprite*)pGame.GetEntityForHandle(pGame.LocalPlayerID(), nHandle);
+	return (sTextSprite*)Game.GetEntityForHandle(Game.LocalPlayerID(), nHandle);
 }
 
 int mp_lsn_Flash(lua_State* L) {
@@ -99,6 +99,7 @@ int mp_lsn_sColour(lua_State* L) {
 		return 1;
 	}
 	else if (nTop >= 3) {
+		// can't use lsc_getColour -> luaL_checknumber
 		uint8 r = luaL_checknumber(L, 2);
 		uint8 g = luaL_checknumber(L, 3);
 		uint8 b = luaL_checknumber(L, 4);
@@ -110,46 +111,6 @@ int mp_lsn_sColour(lua_State* L) {
 	pSprite->SetColour(color);
 	return 0;
 }
-
-// old
-///* stub */
-//CRGBA* ls_get_entity_color(void *entity) {
-//	return NULL;
-//}
-//
-///* stub */
-//CRGBA* ls_set_entity_color(void* entity, CRGBA* color) {
-//	return NULL;
-//}
-//
-//inline void unpack_color(CRGBA& dest, int32 src) {
-//	dest.red = (src >> 24);
-//	dest.green = (src >> 16);
-//	dest.blue = (src >> 8);
-//	dest.alpha = src;
-//}
-//
-///* TODO: this function seems not to be from this file (Text Sprite colour) */
-//int32 mp_lsn_Colour(lua_State* L) {
-//	void* pUnk = mp_ls_getTextSpriteHandle(L);
-//	if (!pUnk) return 0;
-//	int32 nArgs = lua_gettop(L);
-//	if (nArgs >= 3) {
-//		CRGBA color(luaL_checknumber(L, 2), luaL_checknumber(L, 3), luaL_checknumber(L, 4), luaL_checknumber(L, 5));
-//		ls_set_entity_color(pUnk, &color);
-//	}
-//	else if (nArgs == 2) {
-//		CRGBA color;
-//		unpack_color(color, lsc_getColor(L, 2));
-//		ls_set_entity_color(pUnk, &color);
-//	}
-//	// no args
-//	CRGBA* pColor = ls_get_entity_color(pUnk);
-//	uint32 color = CRGBA_PACK(pColor->red, pColor->green, pColor->blue, pColor->alpha);
-//	lua_pushnumber(L, color);
-//	return 1;
-//}
-
 
 int mp_lsn_WrapX(lua_State* L) {
 	uint8 nWrapX = 0;
@@ -183,7 +144,7 @@ int mp_lsn_Text(lua_State* L) {
 	sTextSprite* pSprite = lsc_get_text_sprite(L);
 	if (!pSprite) return 0;
 	if (lua_gettop(L) >= 2) {
-		base::string sText = luaL_checkstring(L, 2);
+		base::string sText = base::string(luaL_checkstring(L, 2));
 		pSprite->SetText(sText);
 		return 0;
 	}
@@ -235,7 +196,7 @@ static const luaL_reg ls_text_sprite_lib[] = {
 VALIDATE_LUA_LIB(ls_text_sprite_lib, (11 + 1), (11 + 1));
 
 int mp_lsn_PrintNow(lua_State* L) {
-	cMultiGame& pGame = TheMPGame;
+	cMultiGame& Game = TheMPGame;
 	net::pckt_print_now packet;
 #ifdef GTA_LIBERTY
 	int32 nPeerID = lsc_pop_peer_id_from_stack(L, 1, 0xB00B5);
@@ -243,21 +204,21 @@ int mp_lsn_PrintNow(lua_State* L) {
 	const int32 nTime = luaL_checknumber(L, 2);
 	const int32 nFlag = luaL_checknumber(L, 3);
 #else
-	int32 nPeerID = lua_tonumber(L, 1);
+	int32 nPeerID = luaL_checknumber(L, 1);
 	const char* sKey = luaL_checkstring(L, 2);
 	const int32 nTime = luaL_checknumber(L, 3);
 	const int32 nFlag = luaL_checknumber(L, 4);
 #endif
-	packet.pckt_size = sizeof(net::pckt_base) + sizeof(net::pckt_print_now::time) + sizeof(net::pckt_print_now::flag) + (uint16)strlen(sKey) + 1; // +12 [+3 +4 +4 + 1]
+	packet.pckt_size = (sizeof(net::pckt_base) + sizeof(net::pckt_print_now::time) + sizeof(net::pckt_print_now::flag) + (uint16)strlen(sKey) + 1); // +12 [+3 +4 +4 + 1]
 	//packet.pckt_size = (uint16)strlen(sKey) + 11 + 1; // +12 [+3 +4 +4 + 1]
 	static_assert((sizeof(net::pckt_print_now) - 256) == 12, "need upd pckt_size calc");
 	packet.pckt_id = gtMP_PacketIDs.print_now.pckt_id;
 	packet.time = nTime;
 	packet.flag = nFlag;
 	strcpy(packet.key, sKey);
-	if (pGame.IsLocalPlayer(nPeerID))
+	if (Game.IsLocalPlayer(nPeerID))
 		on_recv_print_now(packet, 0, 0, false); // bug? true?
-	pGame.SendMessage(packet, nPeerID);
+	Game.SendMessage(packet, nPeerID);
 	return 0;
 }
 
@@ -268,7 +229,6 @@ void push_text_sprite(lua_State* L, sTextSprite* pSprite) {
 	lua_setmetatable(L, -2);
 }
 
-/* TODO: stub */
 int mp_lsn_TextSprite(lua_State* L) {
 #ifdef GTA_LIBERTY
 	int32 nPeerID = lsc_pop_peer_id_from_stack(L, 1, -1);

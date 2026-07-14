@@ -66,10 +66,41 @@ void cMultiGame::FireMessageHandler(net::pckt_base& packet, int sender, uint16 t
 //	MULTIGAME_UNIMPLEMENTED_EVENT();
 //}
 
+void MultigameKickPlayer(uint8 nID) // custom
+{
+	cMultiGame& Game = cMultiGame::Instance();
+	if (!gIsMultiplayerGame || Game.m_pNetSession == nil) return;
+	assert(nID != Game.LocalPlayerID() && "are u serious?");
+	net::pckt_kick_player kick_packet{};
+	kick_packet.pckt_size = sizeof(net::pckt_kick_player);
+	kick_packet.pckt_id = gtMP_PacketIDs.kick_player.pckt_id;
+	kick_packet.peer_id = nID;
+	Game.SendMessagePriority(kick_packet, BROADCAST_PEER_GROUPID);
+	Game.RemovePlayerFromGame(kick_packet.peer_id);
+	//Game.m_pNetSession->UpdateSend(); // pdp spread buffer // cMultiGame::PerformInitialConnection()
+}
+
 void on_recv_kick_player(net::pckt_kick_player& packet, int sender, uint16 time, bool bFromRing) // ID 4
 {
 	debug("Server tells me to kick peer %d\n", packet.peer_id);
 	cMultiGame::Instance().RemovePlayerFromGame(packet.peer_id);
+}
+
+void MultigameRequestKickPlayer(uint8 nID) // custom, guess leeds send in cMultiGame
+{
+	cMultiGame& Game = cMultiGame::Instance();
+	if (!gIsMultiplayerGame || Game.m_pNetSession == nil) return;
+	assert(nID != Game.LocalPlayerID() && "are u serious?");
+	net::pckt_request_kick_player packet{};
+	packet.pckt_size = sizeof(net::pckt_request_kick_player);
+	packet.pckt_id = gtMP_PacketIDs.request_kick_player.pckt_id;
+	packet.peer_id = nID;
+	if (cAdhoc::Instance().IsHost())
+		on_recv_request_kick_player(packet, Game.LocalPlayerID(), 0, true);
+	else
+		Game.SendMessagePriority(packet, FindPlayerHostID());
+	//Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID); // append packet to queue
+	//Game.m_pNetSession->UpdateSend(); // pdp spread buffer // cMultiGame::PerformInitialConnection()
 }
 
 void on_recv_request_kick_player(net::pckt_request_kick_player& packet, int sender, uint16 time, bool bFromRing) // ID 5
@@ -78,12 +109,12 @@ void on_recv_request_kick_player(net::pckt_request_kick_player& packet, int send
 	debug("Handling request kick player\n");
 	if (!cAdhoc::Instance().IsHost()) return;
 	debug("Client %d requests the server to kick peer %d\n", sender, packet.peer_id);
-	net::pckt_request_kick_player new_packet{};
-	new_packet.pckt_size = sizeof(net::pckt_request_kick_player);
-	new_packet.pckt_id = gtMP_PacketIDs.request_kick_player.pckt_id;
-	new_packet.peer_id = packet.peer_id;
-	Game.SendMessagePriority(new_packet, BROADCAST_PEER_GROUPID);
-	Game.RemovePlayerFromGame(packet.peer_id); // why in request?
+	net::pckt_kick_player kick_packet{};
+	kick_packet.pckt_size = sizeof(net::pckt_kick_player);
+	kick_packet.pckt_id = gtMP_PacketIDs.kick_player.pckt_id;
+	kick_packet.peer_id = packet.peer_id;
+	Game.SendMessagePriority(kick_packet, BROADCAST_PEER_GROUPID);
+	Game.RemovePlayerFromGame(packet.peer_id);
 }
 
 bool bNoChangeTeamScore = false; // guessed
@@ -177,12 +208,12 @@ void cMultiGame::OnTransferEntity(net::pckt_transfer_entity& packet, int sender,
 void cMultiGame::OnTransferEntity(net::pckt_transfer_entity& packet, int sender, uint16 time, bool bFromRing) // ID 17
 {
 	cPeerManager& PeerMgr = PeerManager;
-	if (packet.src == LocalPlayerID()) {
+	if (packet.src == LocalPlayerID()) { // i need send my entity
 		sElement* pElem = PeerMgr.GetSelfPeer()->FindElement(packet.elem);
 		if (pElem && !pElem->m_bWasTransfered)
 			pElem->TransferEntity(packet.dest);
 	}
-	else if (packet.src == sender && packet.dest == LocalPlayerID()) {
+	else if (packet.src == sender && packet.dest == LocalPlayerID()) { // this entity for me
 		if (PeerMgr.IsPeerConnected(packet.src))
 		{
 			int32 newElemId = GetNextElementID(); // LCS check -1
@@ -193,7 +224,7 @@ void cMultiGame::OnTransferEntity(net::pckt_transfer_entity& packet, int sender,
 				pElem->m_nPrevOwnerID = pElem->GetOwner();
 				pElem->m_nPrevID = pElem->GetID();
 				pElem->ReceiveEntity(packet.dest, newElemId, m_pNetSession->m_nCurTime);
-				mp_lsc_transfer_entity(pElem->m_nPrevOwnerID, pElem->m_nPrevID, pElem->GetOwner(), pElem->GetID());
+				lsc_transfer_tracked_entity(pElem->m_nPrevOwnerID, pElem->m_nPrevID, pElem->GetOwner(), pElem->GetID());
 			}
 			PeerMgr.GetSelfPeer()->InsertElement(pElem);
 		}
@@ -262,15 +293,15 @@ void on_recv_sync_peer_group(net::pckt_sync_peer_group& packet, int sender, uint
 }
 
 #if !defined(FINAL) && !defined(MASTER)
-void DebugMultigameTriggerError() // snd from peer where error
+void DebugMultigameTriggerError() // snd from peer where error, guess leeds send in cMultiGame
 {
-	if (!gIsMultiplayerGame) return;
 	cMultiGame& Game = cMultiGame::Instance();
+	if (!gIsMultiplayerGame || Game.m_pNetSession == nil) return;
 	debug("DebugMultigameTriggerError()\n");
-	net::pckt_debug_break new_packet{};
-	new_packet.pckt_size = sizeof(net::pckt_debug_break);
-	new_packet.pckt_id = gtMP_PacketIDs.debug_break.pckt_id;
-	Game.SendMessagePriority(new_packet, BROADCAST_PEER_GROUPID); // append packet to queue
+	net::pckt_debug_break packet{};
+	packet.pckt_size = sizeof(net::pckt_debug_break);
+	packet.pckt_id = gtMP_PacketIDs.debug_break.pckt_id;
+	Game.SendMessagePriority(packet, BROADCAST_PEER_GROUPID); // append packet to queue
 	Game.m_pNetSession->UpdateSend(); // pdp spread buffer // cMultiGame::PerformInitialConnection()
 }
 #endif

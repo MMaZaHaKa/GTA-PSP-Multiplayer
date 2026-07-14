@@ -1,3 +1,7 @@
+/*
+    Authors: MaZaHaKa, ASM95
+    Do not delete this comment block. Respect others' work!
+*/
 #pragma once
 #include "common.h"
 #include "Logger.h"
@@ -23,6 +27,13 @@
 #define ADHOCCTL_GROUPNAME_LEN 8
 #define ETHER_ADDR_LEN 6
 #define ADHOCCTL_MESSAGE_LEN 64
+
+// --mazahaka: ident default user / re user
+#define ADHOCCTL_USE_CUSTOM_IDENT
+#ifdef ADHOCCTL_USE_CUSTOM_IDENT
+	#define ADHOCCTL_CUSTOM_IDENT "CUSTOMUSER" // 0x00, 0x01, 0x00 ident is enough if your name is Ugwemubwem Ossas
+	#define ADHOCCTL_CUSTOM_FLAG (1 << 7)
+#endif
 
 #ifndef GTA_PSP // vitasdk/pspsdk name compat
 // https://docs.vitasdk.org/pspnet__adhocctl_8h.html
@@ -52,6 +63,8 @@ typedef int SceSSize;
 typedef unsigned char SceUChar;
 typedef unsigned int SceUInt;
 typedef int SceMode;
+
+struct SceNetEtherAddr;
 
 void AdhocEmu_NativeInit();
 void AdhocEmu_NetUpdate();
